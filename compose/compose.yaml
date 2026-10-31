@@ -1,0 +1,142 @@
+# Nodestro server for development and the end-to-end tests (Linux): PostgreSQL, Dex (OpenID Connect), an isolated
+# Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's API and
+# worker. Every port is published on 127.0.0.1 only. Production: see docs/RUNBOOK.md.
+#
+#   python3 scripts/dev-secrets.py          # once: random secrets and passwords in compose/.secrets/
+#   docker compose -f compose/compose.yaml up -d --wait
+#   open http://localhost:8080
+#
+# The API and the worker use the host's network, so http://localhost:5556/dex is the same issuer for the browser and
+# for the server, and the sandbox daemon is reached at localhost:2376.
+name: nodestro
+
+x-server: &server
+  image: ${NODESTRO_IMAGE:-nodestro-server:dev}
+  network_mode: host
+  restart: unless-stopped
+  environment: &server-environment
+    NODESTRO_PROFILE: server
+    NODESTRO_PUBLIC_ORIGIN: http://localhost:8080
+    NODESTRO_OIDC_ISSUER: http://localhost:5556/dex
+    NODESTRO_OIDC_CLIENT_ID: nodestro-studio
+    NODESTRO_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+    NODESTRO_DATABASE_URL_FILE: /run/secrets/database_url
+    NODESTRO_SECRET_KEY_FILE: /run/secrets/secret_key
+    NODESTRO_MODEL_ENDPOINTS: http://localhost:9100
+    NODESTRO_WORKER_LEASE_SECONDS: ${NODESTRO_WORKER_LEASE_SECONDS:-60}
+    NODESTRO_WORKER_REAP_SECONDS: ${NODESTRO_WORKER_REAP_SECONDS:-15}
+    DOCKER_HOST: tcp://localhost:2376
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /run/sandbox-certs/client
+  secrets: [database_url, oidc_client_secret, secret_key]
+  volumes:
+    - data:/var/lib/nodestro
+    - sandbox-certs:/run/sandbox-certs:ro
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nodestro
+      POSTGRES_DB: nodestro
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:${NODESTRO_DB_PORT:-55433}:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "nodestro", "-d", "nodestro"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.44.0
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml.tmpl"]
+    env_file: [.secrets/dex.env]
+    volumes: ["./dex/config.yaml.tmpl:/etc/dex/config.yaml.tmpl:ro"]
+    ports: ["127.0.0.1:5556:5556"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5556/dex/.well-known/openid-configuration"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The Docker daemon that runs tool code. It is not the host's daemon: tool containers, their images and the
+  # daemon's network live inside this container. TLS with client certificates; the port is on 127.0.0.1 only.
+  sandbox:
+    image: docker:29.9.2-dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    volumes:
+      - sandbox-certs:/certs
+      - sandbox-data:/var/lib/docker
+    ports: ["127.0.0.1:2376:2376"]
+    healthcheck:
+      test: ["CMD", "docker", "--host=tcp://localhost:2376", "--tlsverify", "--tlscacert=/certs/client/ca.pem",
+             "--tlscert=/certs/client/cert.pem", "--tlskey=/certs/client/key.pem", "version"]
+      interval: 2s
+      timeout: 10s
+      retries: 60
+
+  model-stub:
+    image: python:3.13-slim
+    restart: unless-stopped
+    command: ["python", "-I", "/stub/stub.py"]
+    read_only: true
+    user: "65534:65534"
+    volumes: ["./model-stub:/stub:ro"]
+    ports: ["127.0.0.1:9100:9100"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Applies the database migrations, then exits. A database with tables is backed up first (pg_dump).
+  migrate:
+    <<: *server
+    restart: "no"
+    command: ["migrate", "--backup-dir", "/var/lib/nodestro/backups"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *server
+    command: ["api", "--host", "127.0.0.1", "--port", "8080"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      sandbox: {condition: service_healthy}
+      dex: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  worker:
+    <<: *server
+    command: ["worker"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      sandbox: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "nodestro-server", "check"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+secrets:
+  postgres_password: {file: .secrets/postgres_password}
+  database_url: {file: .secrets/database_url}
+  oidc_client_secret: {file: .secrets/oidc_client_secret}
+  secret_key: {file: .secrets/secret_key}
+
+volumes:
+  postgres:
+  data:
+  sandbox-certs:
+  sandbox-data:
