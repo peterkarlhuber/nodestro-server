@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Reproducible base images (K4 of the internal cross-check):
+
+- `image/Dockerfile` takes `python:3.13-slim` and `node:22-bookworm-slim` by the digest of their multi-platform index
+  (`PYTHON_IMAGE`, `NODE_IMAGE`; `NODE_VERSION` is gone). A rebuild of the same commits now uses the same operating
+  system layers on amd64 and arm64. The model stub in `compose/compose.yaml` is pinned the same way.
+- CI (`lint`) fails when a `FROM` or the compose stub names a base image without a digest.
+
 Sandbox gateway security fixes (2026-10-31):
 
 - `studio.json` pins studio `0609fbb` (before: `c4b3708`). That studio pins runtime `8597544`. Its sandbox gateway,
