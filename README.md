@@ -9,7 +9,8 @@ plus a development stack and the end-to-end acceptance tests.
   Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's
   `migrate`, `api` and `worker`.
 - `tests/e2e/`: acceptance tests that drive the running stack like browsers and operators do.
-- `docs/RUNBOOK.md`: installation, configuration, TLS proxy, the sandbox daemon, backup and restore, upgrades.
+- `docs/RUNBOOK.md`: installation, tested system requirements, configuration, TLS proxy, the sandbox daemon, backup
+  and restore, upgrades, releases.
 
 ## Quick start (development, Linux)
 
@@ -47,6 +48,8 @@ Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate b
 
 ## Limitations
 
+- Preview: builds are **unsigned**, only linux/amd64 is built and tested, and no browser has been tested against
+  a server (see the runbook's system requirements).
 - The development stack is Linux-only (the server containers use the host's network). Production installations
   follow the runbook on any Docker host.
 - Dex and the model stub are for development and tests only.

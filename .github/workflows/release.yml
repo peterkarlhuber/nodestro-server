@@ -1,27 +1,29 @@
-name: Release
+name: Release candidate
 
-# A tag `v*` builds the server image from studio.json, runs every acceptance test against it, pushes it to the
-# GitHub container registry of this repository and creates a **draft** GitHub release with the manifest (image
-# digest, component pins, license inventory, signing state). A person reviews the draft and publishes it.
-# A manual run builds and tests the same image and writes the manifest without pushing or releasing anything.
+# Builds and checks a release candidate. It never publishes anything: no tag, no GitHub release, no registry push,
+# and its token can only read. A person starts it with the version; it builds the image from studio.json, runs every
+# acceptance test against it, saves the image, scans it for secrets and writes the manifest. Everything goes into
+# the run's `release-candidate` artifact. Publishing is a separate, manual step: publish.yml with this run's ID.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example v0.2.0-preview.1"
+        required: true
 
 permissions:
   contents: read
 
 jobs:
-  release:
+  candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    permissions:
-      contents: write # the draft release (tags only)
-      packages: write # the image in ghcr.io (tags only)
     env:
-      IMAGE: ghcr.io/peterkarlhuber/nodestro-server
+      VERSION: ${{ inputs.version }}
     steps:
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::not a version: $VERSION"; exit 1; }
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -29,6 +31,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install pytest==8.4.2 httpx==0.28.1
+      - run: python3 -I scripts/test_scan_secrets.py
       - uses: docker/setup-buildx-action@v3
         with:
           driver: docker
@@ -40,39 +43,30 @@ jobs:
             echo "::error::Secret NODESTRO_READ is missing: a token with read access to orkexa and the nodestro repositories."
             exit 1
           fi
-          scripts/build-image.sh nodestro-server:release
+          NODESTRO_VERSION="$VERSION" scripts/build-image.sh nodestro-server:candidate
       - name: Acceptance tests
         env:
-          NODESTRO_IMAGE: nodestro-server:release
+          NODESTRO_IMAGE: nodestro-server:candidate
         run: scripts/e2e.sh -v
-      - name: Push the image (tags only)
-        if: github.ref_type == 'tag'
+      - name: Save the image and scan it for secrets
         env:
-          GH_TOKEN: ${{ github.token }}
+          NODESTRO_SCAN_SECRETS: ${{ secrets.NODESTRO_READ }}
         run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag nodestro-server:release "$IMAGE:$GITHUB_REF_NAME"
-          docker push "$IMAGE:$GITHUB_REF_NAME"
-          docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$GITHUB_REF_NAME" > "$RUNNER_TEMP/published"
-          docker logout ghcr.io
+          mkdir -p release
+          name="nodestro-server-${VERSION}-linux-amd64.tar"
+          docker save -o "$RUNNER_TEMP/$name" nodestro-server:candidate
+          python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/$name"
+          gzip -n -c "$RUNNER_TEMP/$name" > "release/$name.gz"
       - name: Release manifest
         run: |
-          version="${GITHUB_REF_NAME}"
-          [ "$GITHUB_REF_TYPE" = tag ] || version="manual-${GITHUB_SHA::12}"
-          published=""
-          if [ -f "$RUNNER_TEMP/published" ]; then published="$(cat "$RUNNER_TEMP/published")"; fi
-          scripts/release-manifest.sh nodestro-server:release "$version" release "$published"
-          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(m["images"], "unknown licenses:", m["licenses"]["unknown"])' release/release-manifest.json
+          scripts/release-manifest.sh nodestro-server:candidate "$VERSION" release "release/nodestro-server-${VERSION}-linux-amd64.tar.gz"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(m["version"], m["channel"], m["images"], "unknown licenses:", m["licenses"]["unknown"])' release/release-manifest.json
+      - name: Scan the release files for secrets
+        env:
+          NODESTRO_SCAN_SECRETS: ${{ secrets.NODESTRO_READ }}
+        run: python3 -I scripts/scan_secrets.py release
       - uses: actions/upload-artifact@v7
         with:
-          name: release
+          name: release-candidate
           path: release/
           retention-days: 30
-      - name: Create the draft release (tags only)
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --draft \
-            --title "Nodestro Server $GITHUB_REF_NAME (linux/amd64)" \
-            --notes "Image: $(cat "$RUNNER_TEMP/published"). Every acceptance test passed against this image before it was pushed. Component pins, license inventory and signing state (not signed) are in release-manifest.json. See docs/RUNBOOK.md for upgrades and rollback."

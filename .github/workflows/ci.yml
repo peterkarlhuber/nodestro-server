@@ -25,6 +25,7 @@ jobs:
           python-version: "3.13"
       - run: pip install "ruff>=0.8"
       - run: ruff check . && ruff format --check .
+      - run: python3 -I scripts/test_scan_secrets.py
       - name: Compose files are valid
         run: |
           python3 scripts/dev-secrets.py
@@ -65,5 +66,11 @@ jobs:
         env:
           NODESTRO_IMAGE: nodestro-server:ci
         run: scripts/e2e.sh -v
-      - name: Release manifest (dry run)
-        run: scripts/release-manifest.sh nodestro-server:ci "ci-${GITHUB_SHA::12}" "$RUNNER_TEMP/release"
+      - name: Release manifest and secret scan (dry run)
+        env:
+          NODESTRO_SCAN_SECRETS: ${{ secrets.NODESTRO_READ }}
+        run: |
+          docker save -o "$RUNNER_TEMP/image.tar" nodestro-server:ci
+          python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/image.tar"
+          scripts/release-manifest.sh nodestro-server:ci "ci-${GITHUB_SHA::12}" "$RUNNER_TEMP/release"
+          python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/release"

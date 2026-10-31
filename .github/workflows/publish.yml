@@ -1,0 +1,106 @@
+name: Publish release
+
+# The only workflow that publishes. A person starts it by hand after reviewing a passed "Release candidate" run;
+# the confirmation must read "publish <version>". It takes that run's files unchanged: it checks their SHA-256 sums,
+# the version and the commit, loads the tested image and checks its ID against the manifest, pushes the image to
+# ghcr.io under the version tag only (never `latest`), and creates a **draft pre-release**. The tag is created only
+# when a person publishes that draft. The `release` environment can add required reviewers (repository settings).
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: "Run ID of a passed 'Release candidate' run on master"
+        required: true
+      version:
+        description: "Version of that run, for example v0.2.0-preview.1"
+        required: true
+      confirm:
+        description: "Type: publish <version>"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read # the candidate run and its artifact
+      contents: write # the draft release
+      packages: write # the image in ghcr.io
+    env:
+      RUN: ${{ inputs.candidate_run }}
+      VERSION: ${{ inputs.version }}
+      CONFIRM: ${{ inputs.confirm }}
+      IMAGE: ghcr.io/peterkarlhuber/nodestro-server
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the confirmation and the candidate run
+        id: run
+        run: |
+          [ "$CONFIRM" = "publish $VERSION" ] || { echo "::error::the confirmation must read: publish $VERSION"; exit 1; }
+          [[ "$RUN" =~ ^[0-9]+$ ]] || { echo "::error::not a run ID: $RUN"; exit 1; }
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::not a version: $VERSION"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" > run.json
+          python3 - <<'PY'
+          import json, sys
+          run = json.load(open("run.json"))
+          checks = {
+              "workflow": run["path"].split("@")[0] == ".github/workflows/release.yml",
+              "passed": run["conclusion"] == "success",
+              "branch": run["head_branch"] == "master",
+              "repository": run["head_repository"]["full_name"] == run["repository"]["full_name"],
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              sys.exit(f"::error::run {run['id']} is not a passed release candidate on master: {failed}")
+          PY
+          sha=$(python3 -c 'import json; print(json.load(open("run.json"))["head_sha"])')
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...master" --jq .status)
+          case "$status" in identical|ahead) ;; *) echo "::error::$sha is not on master ($status)"; exit 1 ;; esac
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::a release $VERSION exists already"; exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-candidate
+          path: release
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+      - name: Check the files
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+        run: |
+          (cd release && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import json, os, sys
+          m = json.load(open("release/release-manifest.json"))
+          if m["version"] != os.environ["VERSION"] or m["commit"] != os.environ["SHA"]:
+              sys.exit("::error::the manifest names another version or commit")
+          if m["signing"]["status"] != "unsigned" or m["licenses"]["unknown"]:
+              sys.exit("::error::unexpected signing state or packages without a license")
+          PY
+      - name: Load the tested image and push it
+        run: |
+          expected=$(python3 -c 'import json; print(json.load(open("release/release-manifest.json"))["images"][0].split("@", 1)[1])')
+          loaded=$(docker load -i "release/nodestro-server-${VERSION}-linux-amd64.tar.gz" | sed -n 's/^Loaded image: //p; s/^Loaded image ID: //p' | head -n 1)
+          [ "$(docker image inspect --format '{{.Id}}' "$loaded")" = "$expected" ] || { echo "::error::the loaded image is not the tested one"; exit 1; }
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "$loaded" "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION" > published-image.txt
+          docker logout ghcr.io
+          cat published-image.txt
+      - name: Create the draft pre-release
+        env:
+          SHA: ${{ steps.run.outputs.sha }}
+        run: |
+          gh release create "$VERSION" release/release-manifest.json release/SHA256SUMS published-image.txt \
+            --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$SHA" \
+            --title "Nodestro Server $VERSION (linux/amd64, unsigned preview)" \
+            --notes "Unsigned preview build, not for production use. Image: $(cat published-image.txt). Every acceptance test passed against this image in candidate run $RUN. The image is not signed: deploy it by digest. Component pins, license inventory and signing state are in release-manifest.json. See docs/RUNBOOK.md for system requirements, upgrades and rollback."
