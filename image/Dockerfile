@@ -1,11 +1,17 @@
-# The Nodestro server image: `nodestro-server` (API, worker, operator commands) with the studio interface.
+# The Nodestro container images, built from one definition with two operating profiles:
 #
-#   docker buildx build -f image/Dockerfile --build-arg STUDIO_COMMIT=<sha> \
-#       --secret id=nodestro_read,env=NODESTRO_READ -t nodestro-server .
+# - target `server` (the default, the last stage): `nodestro-server` (API, worker, operator commands) with the studio
+#   interface, PostgreSQL client and the server extras;
+# - target `local`: Nodestro Local Docker (`nodestro-local`, profile `local-container`): the same studio and Python
+#   environment without the server extras, plus the same docker CLI, which talks only to the sandbox gateway
+#   (nodestro_runtime.sandbox_gateway, run from this image as its own container). Built by the
+#   nodestro-local-docker repository.
+#
+#   docker buildx build -f image/Dockerfile --build-arg STUDIO_COMMIT=<sha> [--target local] -t nodestro-server .
 #
 # STUDIO_COMMIT is a merge commit of nodestro-studio (studio.json); it pins every component by full commit SHA.
-# The component repositories are private: the build reads them with the token in the `nodestro_read` secret,
-# which never enters a layer. Behind a TLS-inspecting proxy, pass its certificate authority as the `build_ca`
+# The component repositories are public, so no token is needed; a token in the optional `nodestro_read` secret
+# (never a layer) is still used when given. Behind a TLS-inspecting proxy, pass its certificate authority as the `build_ca`
 # secret (and the proxy variables as build arguments). Nothing is fetched when a container starts.
 
 ARG PYTHON_VERSION=3.13
@@ -41,7 +47,7 @@ RUN --mount=type=secret,id=build_ca \
     rm -rf node_modules; \
     test -f /src/src/nodestro_studio/static/index.html
 
-# ---- the Python environment --------------------------------------------------------------------
+# ---- the Python environment (both profiles) ----------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=studio /src /src
@@ -55,8 +61,6 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     python -m venv /opt/nodestro/venv; \
     /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check /src; \
-    /opt/nodestro/venv/bin/python /install.py; \
-    /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt; \
     mkdir -p /opt/nodestro/meta; \
     cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
     cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/; \
@@ -70,20 +74,28 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
       "- the Debian packages of the base image: /usr/share/doc/*/copyright;" \
       "- the docker CLI (/usr/local/bin/docker): Apache-2.0, https://github.com/docker/cli/blob/master/LICENSE." \
       > /opt/nodestro/licenses/README.txt
-RUN --mount=type=bind,from=overrides,target=/overrides \
-    set -eu; \
-    if ls /overrides/*.whl >/dev/null 2>&1; then \
-      echo "development build: replacing pinned components with $(ls /overrides)"; \
-      /opt/nodestro/venv/bin/pip install --no-deps --force-reinstall --no-cache-dir --disable-pip-version-check /overrides/*.whl; \
-      echo "development build" > /opt/nodestro/overridden.txt; \
-    fi; \
-    /opt/nodestro/venv/bin/pip uninstall --yes --disable-pip-version-check pip; \
-    find /opt/nodestro/venv -type d -name __pycache__ -prune -exec rm -rf {} +; \
-    /opt/nodestro/venv/bin/python -I -c "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt"
+COPY image/finalize.sh /finalize.sh
 
-# ---- the image -----------------------------------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim
-ARG PYTHON_VERSION
+# The server's environment: the server extras at exactly the pinned commits.
+FROM build AS server-env
+RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
+    set -eu; \
+    if [ -s /run/secrets/build_ca ]; then export PIP_CERT=/run/secrets/build_ca GIT_SSL_CAINFO=/run/secrets/build_ca; fi; \
+    if [ -s /run/secrets/nodestro_read ]; then \
+      export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nodestro_read)@github.com/peterkarlhuber/.insteadOf" \
+        GIT_CONFIG_VALUE_0="https://github.com/peterkarlhuber/"; \
+    fi; \
+    /opt/nodestro/venv/bin/python /install.py
+RUN --mount=type=bind,from=overrides,target=/overrides \
+    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt"
+
+# Nodestro Local Docker's environment: the studio as pinned, no server extras.
+FROM build AS local-env
+RUN --mount=type=bind,from=overrides,target=/overrides \
+    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway"
+
+# ---- what both images share: tini and the docker CLI -----------------------------------------------
+FROM python:${PYTHON_VERSION}-slim AS base
 ARG TARGETARCH
 # The docker CLI talks to the sandbox's Docker daemon (DOCKER_HOST); the daemon itself is not in this image.
 ARG DOCKER_CLI_VERSION=29.9.2
@@ -92,7 +104,7 @@ ARG DOCKER_CLI_SHA256_ARM64=873b3e0207857c3b2f28392fb922f3ea6efe37620c16d4d4aaf2
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl postgresql-client tini; \
+    apt-get install -y --no-install-recommends ca-certificates curl tini; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x86_64; sum="${DOCKER_CLI_SHA256_AMD64}" ;; \
       arm64) arch=aarch64; sum="${DOCKER_CLI_SHA256_ARM64}" ;; \
@@ -105,8 +117,43 @@ RUN --mount=type=secret,id=build_ca \
     rm /tmp/docker.tgz; \
     apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*; \
     docker --version
-COPY --from=build /opt/nodestro /opt/nodestro
 RUN useradd --system --uid 10001 --home-dir /var/lib/nodestro --create-home nodestro
+
+# ---- Nodestro Local Docker (target `local`) -------------------------------------------------------
+# One person, SQLite in /var/lib/nodestro, the studio on port 8080 of the container (the compose file publishes it
+# on the host's loopback only), an access key created on first start, tool code only in sandbox containers through
+# the gateway's socket. The gateway container runs this image with `gateway` (as root, without capabilities or
+# network, the only container with the host's Docker socket).
+FROM base AS local
+ARG PYTHON_VERSION
+COPY --from=local-env /opt/nodestro /opt/nodestro
+ENV PATH=/opt/nodestro/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NODESTRO_PROFILE=local-container \
+    NODESTRO_DATA_DIR=/var/lib/nodestro/data \
+    NODESTRO_ACCESS_KEY_FILE=/var/lib/nodestro/secrets/access-key \
+    DOCKER_HOST=unix:///run/nodestro-sandbox/docker.sock \
+    DOCKER_BUILDKIT=0 \
+    NODESTRO_STATIC_DIR=/opt/nodestro/venv/lib/python${PYTHON_VERSION}/site-packages/nodestro_studio/static \
+    NODESTRO_DOCS_DIR=/opt/nodestro/venv/lib/python${PYTHON_VERSION}/site-packages/nodestro_studio/docs
+RUN test -f "${NODESTRO_STATIC_DIR}/index.html" && test -d "${NODESTRO_DOCS_DIR}/en" \
+    && mkdir -p /var/lib/nodestro/data /var/lib/nodestro/secrets /run/nodestro-sandbox \
+    && chown -R 10001:10001 /var/lib/nodestro && chmod 0700 /var/lib/nodestro/secrets
+USER 10001:10001
+WORKDIR /var/lib/nodestro
+VOLUME ["/var/lib/nodestro"]
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=6 \
+    CMD ["python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"]
+ENTRYPOINT ["tini", "--", "nodestro-local"]
+CMD ["serve"]
+
+# ---- the server (target `server`, the default) ----------------------------------------------------
+FROM base AS server
+ARG PYTHON_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
+COPY --from=server-env /opt/nodestro /opt/nodestro
 ENV PATH=/opt/nodestro/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
