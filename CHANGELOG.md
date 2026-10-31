@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+Nodestro Local Docker target (2026-10-31):
+
+- `image/Dockerfile` builds two images from one definition: target `server` (the default, unchanged contents) and
+  target `local` for Nodestro Local Docker (profile `local-container`, SQLite in `/var/lib/nodestro`, entry point
+  `nodestro-local`, `DOCKER_HOST` pointing at the sandbox gateway's socket, `DOCKER_BUILDKIT=0`). They share the
+  stages that fetch the studio at its pinned commit, build the interface, install every component and collect the
+  license texts (`image/finalize.sh`); only the last stages differ. The local image has no PostgreSQL client and no
+  server extras.
+- The repositories are public, so the `nodestro_read` token is optional in the Dockerfile (still used when given).
+- `scripts/build-image.sh` takes `NODESTRO_TARGET`; CI also builds the `local` target and checks its imports.
+- `studio.json` pins studio `c4b3708` (before: `78710ce`).
+
 License texts (2026-10-31):
 
 - The image has `/opt/nodestro/licenses/`: Nodestro's license, the license texts of the npm packages built into the
