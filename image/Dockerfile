@@ -15,14 +15,18 @@
 # secret (and the proxy variables as build arguments). Nothing is fetched when a container starts.
 
 ARG PYTHON_VERSION=3.13
-ARG NODE_VERSION=22
+# The base images by the digest of their multi-platform index, so that a rebuild of the same commits uses the same
+# operating system layers (amd64 and arm64). PYTHON_IMAGE must be PYTHON_VERSION (the stages check the paths). Update
+# both on purpose: docker buildx imagetools inspect python:3.13-slim (or node:22-bookworm-slim).
+ARG PYTHON_IMAGE=python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
 
 # ---- development only: wheels that replace pinned components (--build-context overrides=DIR) ------
 # Empty unless a build passes the context; release images never do (scripts/build-image.sh refuses it).
 FROM scratch AS overrides
 
 # ---- the studio source and its built interface ---------------------------------------------------
-FROM node:${NODE_VERSION}-bookworm-slim AS studio
+FROM ${NODE_IMAGE} AS studio
 ARG STUDIO_COMMIT
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
@@ -48,7 +52,7 @@ RUN --mount=type=secret,id=build_ca \
     test -f /src/src/nodestro_studio/static/index.html
 
 # ---- the Python environment (both profiles) ----------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS build
+FROM ${PYTHON_IMAGE} AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=studio /src /src
 COPY image/install.py /install.py
@@ -95,7 +99,7 @@ RUN --mount=type=bind,from=overrides,target=/overrides \
     sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway"
 
 # ---- what both images share: tini and the docker CLI -----------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS base
+FROM ${PYTHON_IMAGE} AS base
 ARG TARGETARCH
 # The docker CLI talks to the sandbox's Docker daemon (DOCKER_HOST); the daemon itself is not in this image.
 ARG DOCKER_CLI_VERSION=29.9.2
