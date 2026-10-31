@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+Release candidate v0.2.0-preview.1 (2026-10-31):
+
+- Building and publishing are separate: `release.yml` only builds and checks a candidate (run by hand with the
+  version; read-only token, no tag, no push, no release). The new `publish.yml` is the only workflow that publishes:
+  run by hand with a passed candidate's run ID and the confirmation `publish <version>`, it pushes exactly the tested
+  image (checked by image ID) under the version tag and creates a draft pre-release. Before, a pushed tag pushed the
+  image to ghcr.io without a further approval.
+- `scripts/scan_secrets.py` scans the saved image (every layer) and the release files for credentials and for the
+  exact build token; CI scans its image on every change. Tests in `scripts/test_scan_secrets.py`.
+- The image carries its version and the labels `dev.nodestro.channel` (`preview` for a pre-release version) and
+  `dev.nodestro.signing=unsigned`; the manifest names the image by its ID and has a `channel` field.
+- `studio.json` moves to studio `78710ce`.
+- `docs/RUNBOOK.md`: the tested system requirements and the three release steps.
+
 Releases (plan M6, 2026-10-31):
 
 - `.github/workflows/release.yml`: a tag `v*` builds the image and runs every acceptance test against it. Only then

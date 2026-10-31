@@ -147,15 +147,42 @@ this way.
 A run that was executing when its worker stopped is marked `run.interrupted` and waits for a person to continue
 it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step).
 
+## System requirements (tested)
+
+What the acceptance tests ran on. Anything else is untested, not unsupported by design.
+
+| Part | Tested | Not tested |
+| --- | --- | --- |
+| Container host | linux/amd64, Docker Engine with Compose v2 (GitHub `ubuntu-latest` runner, Ubuntu 24.04) | arm64, Podman, Kubernetes, Docker Desktop on macOS or Windows |
+| Database | PostgreSQL 17 (the image's `pg_dump`/`pg_restore` are version 17) | other major versions |
+| Identity provider | Dex v2.44.0 (OpenID Connect, authorization code with PKCE) | Keycloak, Entra ID, Okta, others (standard OIDC, expected to work) |
+| Sandbox daemon | Docker-in-Docker 29.9.2 with TLS, a separate daemon from the host's | a remote Docker host on another machine |
+| Browsers for the studio | none against the server image: the acceptance tests use HTTP clients | Chromium, Firefox, Safari against a server |
+
 ## Releases and rollback
 
-- Images come from `.github/workflows/release.yml`. A tag `v*` builds the image from `studio.json` and runs every
-  acceptance test against it. Only then is it pushed to `ghcr.io/peterkarlhuber/nodestro-server:<tag>`, and a
-  **draft** release is created with `release-manifest.json` and `SHA256SUMS`. A person publishes the draft.
-- Deploy by digest, not by tag. The manifest names the digest (`images`), every component commit, the license
-  inventory of the image's Python packages and of the studio interface, and the signing state.
-- Images are **not signed** yet (no signing key is configured), and the manifest says so. Check the digest against
-  the manifest of the release you reviewed.
+A release has three separate steps. Only the last two publish anything, and each is started by a person.
+
+1. **Candidate** (`.github/workflows/release.yml`, run by hand with the version, for example `v0.2.0-preview.1`): it
+   builds the image from `studio.json` with the version in its labels, runs every acceptance test against it, saves
+   it, scans the saved image and the release files for secrets (`scripts/scan_secrets.py`, including the build
+   token's exact value) and writes `release-manifest.json` and `SHA256SUMS`. The run's `release-candidate`
+   artifact holds the saved image and those files. It pushes nothing and its token can only read.
+2. **Publish** (`.github/workflows/publish.yml`, run by hand with the candidate's run ID, the version and the
+   confirmation `publish <version>`): it checks that the run is a passed candidate on master, the checksums, the
+   manifest's version and commit, and that the loaded image has the tested image ID. Then it pushes the image to
+   `ghcr.io/peterkarlhuber/nodestro-server:<version>` (never `latest`) and creates a **draft pre-release** with the
+   manifest, the checksums and `published-image.txt` (the image's registry digest). Required reviewers for the
+   `release` environment (repository settings) add a second approval before this job runs.
+3. **Release**: a person reviews the draft and publishes it; that creates the tag.
+
+- Deploy by digest (`published-image.txt`), not by tag. `docker image inspect --format '{{.Id}}'` of a pulled image
+  equals the ID in the manifest (`images`). The manifest also names every component commit, the license inventory
+  of the image's Python packages and of the studio interface, the channel (`preview` for a version with a
+  pre-release part) and the signing state.
+- Images are **not signed** (no signing key is configured); the manifest says `"status": "unsigned"` and the image
+  carries the labels `dev.nodestro.signing=unsigned` and `dev.nodestro.channel`. Preview versions are not meant for
+  production data.
 - Rollback:
   1. Stop the API and the workers.
   2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and
