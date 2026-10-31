@@ -1,0 +1,4 @@
+# Only what image/Dockerfile copies; keeps generated development secrets (compose/.secrets) out of the build context.
+*
+!image/
+!scripts/npm_licenses.mjs

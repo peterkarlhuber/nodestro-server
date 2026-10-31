@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+License texts (2026-10-31):
+
+- The image has `/opt/nodestro/licenses/`: Nodestro's license, the license texts of the npm packages built into the
+  studio interface (`scripts/npm_licenses.mjs`, shared with nodestro-desktop) and a README that names where the
+  Python packages', the Debian packages' and the docker CLI's licenses are.
+- `.dockerignore` limits the build context to what the Dockerfile copies (keeps `compose/.secrets` out of it).
+
 Release candidate v0.2.0-preview.1 (2026-10-31):
 
 - Building and publishing are separate: `release.yml` only builds and checks a candidate (run by hand with the

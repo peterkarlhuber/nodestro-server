@@ -32,10 +32,13 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     git fetch -q --depth 1 origin "${STUDIO_COMMIT}" && git checkout -q FETCH_HEAD; \
     git rev-parse HEAD > /src/.studio-commit; \
     rm -rf .git
+COPY scripts/npm_licenses.mjs /npm_licenses.mjs
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
     if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
-    cd frontend && npm ci --no-audit --no-fund && npm run build && rm -rf node_modules; \
+    cd frontend && npm ci --no-audit --no-fund && npm run build; \
+    node /npm_licenses.mjs . > /src/THIRD-PARTY-npm.txt; \
+    rm -rf node_modules; \
     test -f /src/src/nodestro_studio/static/index.html
 
 # ---- the Python environment --------------------------------------------------------------------
@@ -56,7 +59,17 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt; \
     mkdir -p /opt/nodestro/meta; \
     cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
-    cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/
+    cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/; \
+    mkdir -p /opt/nodestro/licenses; \
+    cp /src/LICENSE /opt/nodestro/licenses/LICENSE-nodestro.txt; \
+    cp /src/THIRD-PARTY-npm.txt /opt/nodestro/licenses/; \
+    printf '%s\n' \
+      "Nodestro is MIT licensed (LICENSE-nodestro.txt). It contains third-party software under its own licenses:" \
+      "- THIRD-PARTY-npm.txt: the npm packages built into the studio interface;" \
+      "- each Python package's license is in its /opt/nodestro/venv/lib/python*/site-packages/*.dist-info directory;" \
+      "- the Debian packages of the base image: /usr/share/doc/*/copyright;" \
+      "- the docker CLI (/usr/local/bin/docker): Apache-2.0, https://github.com/docker/cli/blob/master/LICENSE." \
+      > /opt/nodestro/licenses/README.txt
 RUN --mount=type=bind,from=overrides,target=/overrides \
     set -eu; \
     if ls /overrides/*.whl >/dev/null 2>&1; then \
