@@ -12,8 +12,8 @@ The manifest (``DIR/release-manifest.json``) records:
 - the license inventory: the Python distributions in the bundled interpreter, the npm packages built into the studio
   interface (``package-lock.json``), and the Rust crates of the shell (``cargo metadata``). Packages without a
   declared license are listed under ``licenses.unknown``, so a release reviewer sees them;
-- the channel (``preview`` for a version with a pre-release part) and the signing state. Nothing is signed until a signing certificate is configured, and the manifest says so instead of
-  claiming otherwise.
+- the channel (``preview`` for a version with a pre-release part) and the signing state. Nothing is signed
+  until a signing certificate is configured, and the manifest says so instead of claiming otherwise.
 
 Standard library only; it never prints secrets.
 """
