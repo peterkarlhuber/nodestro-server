@@ -1,0 +1,33 @@
+# Dex as the development and test identity provider (OpenID Connect). Never use it for production logins:
+# it keeps its state in memory and its users are the static ones below, with passwords from the environment
+# (written by scripts/dev-secrets.py). The image renders this template with gomplate before Dex reads it.
+issuer: http://localhost:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  skipApprovalScreen: true
+  responseTypes: [code]
+expiry:
+  idTokens: 10m
+enablePasswordDB: true
+staticClients:
+  - id: nodestro-studio
+    name: Nodestro Studio
+    secretEnv: NODESTRO_OIDC_CLIENT_SECRET
+    redirectURIs:
+      - http://localhost:8080/api/auth/callback
+staticPasswords:
+  - email: alice@example.com
+    username: alice
+    userID: 6c0b7b54-0b8e-4a39-9a0e-6f3f0d7d0a01
+    hash: '{{ crypto.Bcrypt (getenv "DEX_PASSWORD_ALICE") }}'
+  - email: bob@example.com
+    username: bob
+    userID: 6c0b7b54-0b8e-4a39-9a0e-6f3f0d7d0a02
+    hash: '{{ crypto.Bcrypt (getenv "DEX_PASSWORD_BOB") }}'
+  - email: mallory@example.com
+    username: mallory
+    userID: 6c0b7b54-0b8e-4a39-9a0e-6f3f0d7d0a03
+    hash: '{{ crypto.Bcrypt (getenv "DEX_PASSWORD_MALLORY") }}'
