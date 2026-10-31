@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+Releases (plan M6, 2026-10-31):
+
+- `.github/workflows/release.yml`: a tag `v*` builds the image and runs every acceptance test against it. Only then
+  is the image pushed to `ghcr.io/peterkarlhuber/nodestro-server:<tag>` and a draft release created. A manual run
+  builds and tests without publishing.
+- `scripts/release-manifest.sh` runs `scripts/release_manifest.py` inside the image. It writes
+  `release-manifest.json` (image digest, studio and component commits, license inventory of the image's Python
+  packages and the studio's npm packages, signing state "unsigned") and `SHA256SUMS`. CI writes it on every change
+  as a dry run.
+- The image keeps the studio commit, `versions.json` and `package-lock.json` in `/opt/nodestro/meta`.
+- `studio.json` moves to studio `5a1cf56` (api `a08c9c3`, sdk `e508e6b`: Architect agents get the configured default
+  model as quality judge).
+- `docs/RUNBOOK.md`: releases, deploy by digest, rollback with the pre-migration backup, supported platforms.
+
 The first server (desktop/server plan, PR-12, 2026-10-31):
 
 - Image `nodestro-server` built from a pinned nodestro-studio commit (`studio.json`): the built studio, the API with

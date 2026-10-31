@@ -147,6 +147,23 @@ this way.
 A run that was executing when its worker stopped is marked `run.interrupted` and waits for a person to continue
 it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step).
 
+## Releases and rollback
+
+- Images come from `.github/workflows/release.yml`. A tag `v*` builds the image from `studio.json` and runs every
+  acceptance test against it. Only then is it pushed to `ghcr.io/peterkarlhuber/nodestro-server:<tag>`, and a
+  **draft** release is created with `release-manifest.json` and `SHA256SUMS`. A person publishes the draft.
+- Deploy by digest, not by tag. The manifest names the digest (`images`), every component commit, the license
+  inventory of the image's Python packages and of the studio interface, and the signing state.
+- Images are **not signed** yet (no signing key is configured), and the manifest says so. Check the digest against
+  the manifest of the release you reviewed.
+- Rollback:
+  1. Stop the API and the workers.
+  2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and
+     restore"). An older image refuses a newer schema (`storage.schema_too_new`) instead of misreading it.
+  3. Start the previous image's `migrate`, then its API and workers.
+- Supported: linux/amd64 images (the e2e tests run on that platform only). The Dockerfile also has an arm64 docker
+  CLI checksum, but no arm64 image is built or tested.
+
 ## Development stack (Linux)
 
 ```sh
