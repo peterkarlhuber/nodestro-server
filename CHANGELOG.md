@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+Connected MCP services in the studio (2026-10-31):
+
+- `studio.json` pins studio `d71780a` (before: `0609fbb`). That studio pins api `a06ccea` (the `/api/mcp` routes,
+  MCP WP-3) and sdk `8fcb94d`, and adds the Tools › Connected services page (WP-4). Runtime stays at `8597544`. MCP
+  services stay off until an administrator adds a server; nothing is enabled by default.
+
 Reproducible base images (K4 of the internal cross-check):
 
 - `image/Dockerfile` takes `python:3.13-slim` and `node:22-bookworm-slim` by the digest of their multi-platform index
