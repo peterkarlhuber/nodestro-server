@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Sandbox gateway security fixes (2026-10-31):
+
+- `studio.json` pins studio `0609fbb` (before: `c4b3708`). That studio pins runtime `8597544`. Its sandbox gateway,
+  which runs in the `local` target's gateway container, parses request heads strictly (request smuggling fix,
+  runtime PR #33) and refuses sandboxes when the Docker daemon cannot enforce resource limits (runtime PR #37).
+  The studio commit also carries the studio work merged since `c4b3708`.
+
 Nodestro Local Docker target (2026-10-31):
 
 - `image/Dockerfile` builds two images from one definition: target `server` (the default, unchanged contents) and
