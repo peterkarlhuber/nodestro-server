@@ -30,6 +30,7 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     git init -q . && git remote add origin https://github.com/peterkarlhuber/nodestro-studio.git; \
     git fetch -q --depth 1 origin "${STUDIO_COMMIT}" && git checkout -q FETCH_HEAD; \
+    git rev-parse HEAD > /src/.studio-commit; \
     rm -rf .git
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
@@ -52,7 +53,10 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     python -m venv /opt/nodestro/venv; \
     /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check /src; \
     /opt/nodestro/venv/bin/python /install.py; \
-    /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt
+    /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt; \
+    mkdir -p /opt/nodestro/meta; \
+    cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
+    cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/
 RUN --mount=type=bind,from=overrides,target=/overrides \
     set -eu; \
     if ls /overrides/*.whl >/dev/null 2>&1; then \

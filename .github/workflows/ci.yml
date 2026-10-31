@@ -65,3 +65,5 @@ jobs:
         env:
           NODESTRO_IMAGE: nodestro-server:ci
         run: scripts/e2e.sh -v
+      - name: Release manifest (dry run)
+        run: scripts/release-manifest.sh nodestro-server:ci "ci-${GITHUB_SHA::12}" "$RUNNER_TEMP/release"
