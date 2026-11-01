@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Studio pin: Amazon Bedrock branches (branch only, 2026-11-01)
+
+- `studio.json` pins studio `b8c6d48` (before: `5f96652`), the studio branch with the Bedrock interface and the
+  Bedrock branch pins: runtime `ac96c6f`, api `4e2c8cd`, sdk `3ca06b3`, orkexa `3467940` (boto3).
+
 ### Studio pin: final UX initiative state (2026-11-01)
 
 - `studio.json` pins studio `5f96652` (before: `90f08ce`): the final UX initiative work (orchestration rounds view,
