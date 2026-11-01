@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- RUNBOOK: the "Not yet" list states what published APIs, batches and test series do on a server today (S-2 pilot
+  finding F4).
+
 Runs paused at a tool approval (AO M6b, behind a switch, 2026-11-01):
 
 - `studio.json` pins studio `e47081f` (before: `24bac8e`). That studio pins runtime `c86781b` and api `ae6cecd`.
