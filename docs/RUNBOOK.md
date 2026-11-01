@@ -71,6 +71,9 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_OIDC_CLIENT_SECRET` / `_FILE` | Its secret |
 | `NODESTRO_SECRET_KEY` / `_FILE` | At least 32 random bytes, base64 |
 | `NODESTRO_MODEL_ENDPOINTS` | Comma-separated origins of self-hosted model endpoints tenants may use (Ollama, vLLM, …). Empty: none |
+| `NODESTRO_BEDROCK_TENANT_ROLES` / `_FILE` | Amazon Bedrock: the IAM role each tenant uses, as JSON `{"<tenant_id>": {"role_arn": "…", "external_id": "…"}}`. Unset: no tenant can use Bedrock. See [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants) |
+| `NODESTRO_BEDROCK_DATA_RESIDENCY` | `eu_only`: every tenant's Bedrock calls stay in EU regions; a tenant cannot relax it. Unset: each tenant chooses |
+| `NODESTRO_BEDROCK_ALLOWED_REGIONS` | Comma-separated AWS regions tenants may use for Bedrock (e.g. `eu-central-1,eu-west-1`). Unset: no extra limit |
 | `NODESTRO_WORKER_LEASE_SECONDS` | How long a run stays a worker's without a heartbeat (default 60) |
 | `NODESTRO_WORKER_POLL_SECONDS`, `NODESTRO_WORKER_REAP_SECONDS` | Worker intervals (defaults 1 and 15) |
 | `NODESTRO_WORKER_CLEANUP_SECONDS` | How often the scheduler leader cleans up (default 600): it deletes expired sessions and abandoned login starts, finished jobs after 7 days and run events after 2 days (the runs themselves stay) |
@@ -80,19 +83,140 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_RUN_THREADS` | Threads for agents and orchestrator decisions of one tenant in one process (default 32); an agent beyond the limit waits for a thread |
 | `NODESTRO_DATA_DIR` | Files of the tenants (`/var/lib/nodestro` in the image): a shared volume for API and workers |
 | `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` | The sandbox daemon (TLS with client certificates) |
-| `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE` | Only behind a TLS-inspecting proxy: its certificate bundle |
+| `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE`, `AWS_CA_BUNDLE` | Only behind a TLS-inspecting proxy: its certificate bundle. The AWS SDK (Bedrock, STS) ignores `SSL_CERT_FILE` and reads only `AWS_CA_BUNDLE`; `compose/extra-ca.yaml` sets all three |
 
 `nodestro-server check` validates all of it and exits with 0 when the server is ready. An incomplete or unsafe
 configuration is refused with `profile.invalid`, listing every problem at once; secret values are never printed.
 
 The server never uses provider keys from its own environment for tenants: each tenant enters its own keys, which
-are stored encrypted (AES-256-GCM, a key per tenant derived from `NODESTRO_SECRET_KEY`).
+are stored encrypted (AES-256-GCM, a key per tenant derived from `NODESTRO_SECRET_KEY`). Amazon Bedrock has no key:
+the operator assigns each tenant an IAM role (next section).
 
 PostgreSQL's `max_connections` must cover every process: (`NODESTRO_DATABASE_POOL_SIZE` + 1 connection for locks)
 × the number of API and worker processes, plus a few for operator commands such as `migrate` and `backup`. With the
 defaults, one API and two workers need up to 27 connections. Every connection is checked before it is used, so a
 connection the database dropped (a restart, a failover, a proxy's idle timeout) is replaced without restarting the
 API or the workers.
+
+## Amazon Bedrock for tenants
+
+Tenants **never** use the server's own (ambient) AWS credentials: not its environment, not `~/.aws`, not an
+instance or pod role. Bedrock is off for every tenant (`provider.bedrock_not_available`) until the operator assigns
+the tenant an IAM role. The tenant sees only that a role is assigned, never its ARN or the external ID, and cannot
+choose a role itself. Nodestro never stores AWS access keys.
+
+**Assign roles.** `NODESTRO_BEDROCK_TENANT_ROLES` (or `NODESTRO_BEDROCK_TENANT_ROLES_FILE`, a file with the same
+JSON; giving both is refused) maps tenant IDs to roles:
+
+```json
+{
+  "<tenant_id>": {"role_arn": "arn:aws:iam::111122223333:role/nodestro-tenant-acme", "external_id": "<random, per tenant>"}
+}
+```
+
+Use one role and one random external ID per tenant. The server assumes the tenant's role with STS (`ExternalId`,
+session name `nodestro-<tenant>`, sessions of 1800 seconds that botocore refreshes 15 minutes before they expire,
+the regional STS endpoint; the role's maximum session duration must allow 1800 seconds) in a session
+of that tenant alone, and gives the tenant's agents only that session. `NODESTRO_BEDROCK_DATA_RESIDENCY=eu_only` forces EU-only processing for all
+tenants (EU regions and EU cross-region inference profiles only). `NODESTRO_BEDROCK_ALLOWED_REGIONS` limits the
+regions further. `nodestro-server check` validates all three (`nodestro_runtime.bedrock.BedrockOperatorConfig`).
+
+**The server's base identity** (environment, IRSA/web identity or an instance role) needs only `sts:AssumeRole` on
+the tenant roles, nothing for Bedrock itself:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": ["arn:aws:iam::111122223333:role/nodestro-tenant-*"]
+  }]
+}
+```
+
+**Trust policy of each tenant role**: only the server's base identity, only with the tenant's external ID:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"AWS": "arn:aws:iam::444455556666:role/nodestro-server"},
+    "Action": "sts:AssumeRole",
+    "Condition": {"StringEquals": {"sts:ExternalId": "<the tenant's external_id>"}}
+  }]
+}
+```
+
+**Permissions of each tenant role**: as little as possible. Name the models and inference profiles the tenant may use;
+add `bedrock:GetGuardrail` (on the guardrail's ARN) only if the tenant uses a guardrail:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:eu-central-1:111122223333:inference-profile/eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "bedrock:GetInferenceProfile",
+      "Resource": "arn:aws:bedrock:eu-central-1:111122223333:inference-profile/*"
+    }
+  ]
+}
+```
+
+A cross-region inference profile also needs the foundation model in every region it routes to (hence the `*`
+region above). The connection check in the studio (Settings, Amazon Bedrock, verify) calls only free read operations
+and never invokes a model: `sts:GetCallerIdentity` (allowed for every identity, no policy needed) and
+`bedrock:ListFoundationModels`, or `bedrock:GetInferenceProfile` / `bedrock:GetFoundationModel` when a model is given.
+Add to the tenant role:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["bedrock:ListFoundationModels", "bedrock:GetFoundationModel"],
+  "Resource": "*"
+}
+```
+
+**Keep data in the EU** with a service control policy in addition to `eu_only`, so that no credential of the
+account can call Bedrock outside the EU:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "BedrockOnlyInTheEU",
+    "Effect": "Deny",
+    "Action": "bedrock:*",
+    "Resource": "*",
+    "Condition": {"StringNotLike": {"aws:RequestedRegion": ["eu-*"]}}
+  }]
+}
+```
+
+**Instance metadata (IMDS).** On EC2 with an instance role, require IMDSv2 with a hop limit of 1
+(`aws ec2 modify-instance-metadata-options --http-tokens required --http-put-response-hop-limit 1`), so containers
+cannot fetch the instance role's credentials; or block `169.254.169.254` in the sandbox daemon's networks, because
+tool environment builds have network access. With the hop limit 1, the server itself must get its base credentials
+another way (environment, IRSA/web identity, or a host network).
+
+**Egress.** For every region tenants may use, allow `bedrock-runtime.<region>.amazonaws.com` (model calls),
+`bedrock.<region>.amazonaws.com` (control plane: inference profiles, models) and `sts.<region>.amazonaws.com` (role
+assumption) from the API and the workers. Cross-region inference profiles are called on the source region's endpoint,
+so no further hosts are needed. Proxies: the AWS SDK honours `HTTPS_PROXY`/`NO_PROXY`, but for a TLS-inspecting
+proxy it needs `AWS_CA_BUNDLE` (it ignores `SSL_CERT_FILE`); `compose/extra-ca.yaml` sets it.
+
+**Model invocation logging** in Bedrock stores the full prompts and responses in your S3 bucket or CloudWatch. It is
+off by default; switch it on only knowingly, and treat its destination like tenant data.
 
 ## TLS reverse proxy
 
@@ -281,6 +405,9 @@ is for production.
 - Every request is bound to the session's tenant; a tenant's data is never visible to another tenant.
 - Tenants reach only the model endpoints in `NODESTRO_MODEL_ENDPOINTS` besides the providers' public APIs, so the
   server cannot be used to probe its own network.
+- Amazon Bedrock: tenants never use the server's own AWS credentials, only the role the operator assigned them in
+  `NODESTRO_BEDROCK_TENANT_ROLES`; there are no custom Bedrock endpoints. The server's base identity needs only
+  `sts:AssumeRole`. On EC2, require IMDSv2 with hop limit 1 (see [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants)).
 - Secrets never appear in logs, errors or the image. The component repositories are public; a build token, if
   given, reaches the build only as a BuildKit secret.
 - Not yet: rotation of `NODESTRO_SECRET_KEY`; published workflow APIs on a server (calls are answered with 405);

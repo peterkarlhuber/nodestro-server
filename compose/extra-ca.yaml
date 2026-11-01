@@ -1,11 +1,13 @@
 # Only behind a TLS-inspecting proxy: trust its certificate authority (NODESTRO_EXTRA_CA_FILE, a PEM bundle that
 # also contains the public roots) for downloads of the sandbox daemon (images), the server (Python packages for
-# tool environments) and image builds.
+# tool environments), model providers and image builds. The AWS SDK (Amazon Bedrock, STS) ignores SSL_CERT_FILE and
+# reads only AWS_CA_BUNDLE.
 #
 #   NODESTRO_EXTRA_CA_FILE=/path/to/ca-bundle.pem COMPOSE_FILE=compose/compose.yaml:compose/extra-ca.yaml docker compose up -d
 x-extra-ca: &extra-ca
   environment:
     SSL_CERT_FILE: /run/extra-ca.pem
+    AWS_CA_BUNDLE: /run/extra-ca.pem
     NODESTRO_BUILD_CA_FILE: /run/extra-ca.pem
   volumes:
     - ${NODESTRO_EXTRA_CA_FILE:?NODESTRO_EXTRA_CA_FILE names the bundle}:/run/extra-ca.pem:ro
