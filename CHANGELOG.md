@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Studio pin: final UX initiative state (2026-11-01)
+
+- `studio.json` pins studio `5f96652` (before: `90f08ce`): the final UX initiative work (orchestration rounds view,
+  per-language interface chunks, help and accessibility fixes). Backend pins unchanged: runtime `d141b8f`, api
+  `db6a696`, sdk `4a97cef`, orkexa `6e69b9c`.
+
 ### Studio pin: PostgreSQL read performance, accessibility (2026-11-01)
 
 - `studio.json` pins studio `90f08ce` (before: `561c655`): runtime `d141b8f` (pool checks only idle connections,
