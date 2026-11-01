@@ -82,7 +82,12 @@ jobs:
         run: |
           scripts/build-image.sh nodestro-local:ci
           docker run --rm --network none --read-only --entrypoint python nodestro-local:ci -I -c \
-            'import nodestro_api.local_container, nodestro_runtime.sandbox_gateway; print("local target ok")'
+            'import nodestro_api.local_container, nodestro_runtime.sandbox_gateway
+          import boto3, botocore.session, orkexa.providers.bedrock
+          session = botocore.session.get_session()
+          for name in ("bedrock-runtime", "bedrock", "sts"):
+              session.get_service_model(name)
+          print("local target ok")'
       - name: Acceptance tests
         env:
           NODESTRO_IMAGE: nodestro-server:ci

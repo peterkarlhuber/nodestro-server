@@ -81,6 +81,8 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
 COPY image/finalize.sh /finalize.sh
 
 # The server's environment: the server extras at exactly the pinned commits.
+# Both environments must contain the Amazon Bedrock provider: boto3/botocore come with orkexa[all], and the
+# import check loads botocore's service models (bedrock-runtime, bedrock, sts) to prove its data files are there.
 FROM build AS server-env
 RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     set -eu; \
@@ -91,12 +93,12 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     /opt/nodestro/venv/bin/python /install.py
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt"
+    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
 
 # Nodestro Local Docker's environment: the studio as pinned, no server extras.
 FROM build AS local-env
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway"
+    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
 
 # ---- what both images share: tini and the docker CLI -----------------------------------------------
 FROM ${PYTHON_IMAGE} AS base
