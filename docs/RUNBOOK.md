@@ -9,7 +9,7 @@ same image and the same settings with its own PostgreSQL, identity provider, TLS
 | Part | What it does | Notes |
 | --- | --- | --- |
 | `nodestro-server api` | The studio (web interface and API) with logins | Stateless; several can run behind the proxy |
-| `nodestro-server worker` | Executes queued runs, reaps runs of dead workers, fires schedules | One or more |
+| `nodestro-server worker` | Executes queued runs, reaps runs of dead workers, fires schedules, cleans up | One or more |
 | `nodestro-server migrate` | Applies database migrations, then exits | Before API and workers start |
 | PostgreSQL 17 | All data of all tenants | Back it up (see below); the image's `pg_dump`/`pg_restore` are version 17 |
 | OpenID Connect provider | Logins (Keycloak, Entra ID, Okta, Dex, …) | The server never sees passwords |
@@ -21,9 +21,10 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
 
 ## Install
 
-1. Build the image (or take it from your registry): `NODESTRO_READ=<token> scripts/build-image.sh
+1. Build the image (or take it from your registry): `scripts/build-image.sh
    registry.example.com/nodestro-server:<version>`. `studio.json` names the studio commit; it pins every
-   component by full commit SHA.
+   component by full commit SHA. The component repositories are public; a token in `NODESTRO_READ` is optional and
+   reaches the build only as a BuildKit secret.
 2. Create the database and a role that owns it:
    `CREATE ROLE nodestro LOGIN PASSWORD '…'; CREATE DATABASE nodestro OWNER nodestro;`
 3. Register a client at your identity provider: confidential client, authorization code flow with PKCE (S256),
@@ -34,7 +35,26 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
 6. Run `nodestro-server migrate`, then start the API and the workers, then the proxy.
 7. Create the first tenant and its owner:
    `nodestro-server create-tenant acme "Acme Inc."` and `nodestro-server setup-link acme`. The link is valid for
-   24 hours and once; whoever logs in with it becomes the tenant's first owner, who then invites everyone else.
+   24 hours and once; whoever logs in with it becomes the tenant's first owner.
+8. Add everyone else (see [Members](#members)): each person logs in once (they are told that they have no access
+   yet), then an operator grants a role, for example `nodestro-server set-role acme bob@example.com editor`.
+
+## Members
+
+Members are managed with operator commands; they cannot be managed in the studio yet. `USER` is a user id
+(`u_…`), a verified e-mail address (compared case-insensitively) or the person's subject at the identity provider.
+The person must have logged in once, so that the server knows them.
+
+| Command | What it does |
+| --- | --- |
+| `nodestro-server members TENANT` | Lists the members with user id, role, e-mail address, name and subject |
+| `nodestro-server set-role TENANT USER ROLE` | Adds the person to the tenant or changes their role (`owner`, `admin`, `editor`, `operator`, `viewer`); takes effect with their next request |
+| `nodestro-server remove-member TENANT USER` | Removes the person from the tenant and ends their sessions there |
+| `nodestro-server revoke-sessions USER` | Ends every session of the person in every tenant (logs them out everywhere; memberships stay) |
+
+Errors: `identity.user_unknown` (nobody with that name has logged in yet), `identity.user_ambiguous` (the e-mail
+address names several users; use the user id), `identity.tenant_unknown`, `identity.not_a_member` and
+`identity.last_owner` (a tenant keeps at least one owner).
 
 ## Configuration
 
@@ -53,6 +73,11 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_MODEL_ENDPOINTS` | Comma-separated origins of self-hosted model endpoints tenants may use (Ollama, vLLM, …). Empty: none |
 | `NODESTRO_WORKER_LEASE_SECONDS` | How long a run stays a worker's without a heartbeat (default 60) |
 | `NODESTRO_WORKER_POLL_SECONDS`, `NODESTRO_WORKER_REAP_SECONDS` | Worker intervals (defaults 1 and 15) |
+| `NODESTRO_WORKER_CLEANUP_SECONDS` | How often the scheduler leader cleans up (default 600): it deletes expired sessions and abandoned login starts, finished jobs after 7 days and run events after 2 days (the runs themselves stay) |
+| `NODESTRO_DATABASE_POOL_SIZE` | Database connections per API or worker process (default 8) |
+| `NODESTRO_DATABASE_STATEMENT_TIMEOUT` | Longest time one SQL statement may run, in seconds (default 30; 0: no limit). Migrations have no limit |
+| `NODESTRO_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT` | Longest time a transaction may stay idle, in seconds (default 300) |
+| `NODESTRO_RUN_THREADS` | Threads for agents and orchestrator decisions of one tenant in one process (default 32); an agent beyond the limit waits for a thread |
 | `NODESTRO_DATA_DIR` | Files of the tenants (`/var/lib/nodestro` in the image): a shared volume for API and workers |
 | `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` | The sandbox daemon (TLS with client certificates) |
 | `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE` | Only behind a TLS-inspecting proxy: its certificate bundle |
@@ -62,6 +87,12 @@ configuration is refused with `profile.invalid`, listing every problem at once; 
 
 The server never uses provider keys from its own environment for tenants: each tenant enters its own keys, which
 are stored encrypted (AES-256-GCM, a key per tenant derived from `NODESTRO_SECRET_KEY`).
+
+PostgreSQL's `max_connections` must cover every process: (`NODESTRO_DATABASE_POOL_SIZE` + 1 connection for locks)
+× the number of API and worker processes, plus a few for operator commands such as `migrate` and `backup`. With the
+defaults, one API and two workers need up to 27 connections. Every connection is checked before it is used, so a
+connection the database dropped (a restart, a failover, a proxy's idle timeout) is replaced without restarting the
+API or the workers.
 
 ## TLS reverse proxy
 
@@ -88,6 +119,19 @@ server {
 
 Bind the API to `127.0.0.1` or a private network (`nodestro-server api --host 127.0.0.1`); never publish port 8080.
 
+The server has no rate limit for logins of its own, so a rate limit for `/api/auth/` in the proxy is still advisable
+(for nginx: a `limit_req_zone` in the `http` block and a `location /api/auth/` with `limit_req` and the same
+`proxy_*` settings). The server serves the studio gzip-compressed, with long-lived immutable caching for the
+content-hashed files under `/assets` and `no-cache` for `index.html`, so the proxy need not compress it.
+
+## Health checks
+
+`GET /api/health` needs no session. It answers 200 `{"status": "ok", "database": "ok"}` while the API process
+reaches its database, and 503 `{"status": "unavailable", "database": "unreachable"}` when it does not (the check
+gives up after 2 seconds). The development stack's health check for the API treats the 503 as unhealthy; use the
+same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
+`nodestro-server check`.
+
 ## The sandbox daemon
 
 Tool code, including code written by the Workflow Architect or the Assistant, is untrusted. The server runs it only
@@ -106,6 +150,12 @@ not get the host's own daemon or socket. Options, from most to least isolated:
   boundary against a kernel exploit.
 
 Optionally use a stronger runtime for the sandbox daemon (gVisor `runsc`, Kata Containers).
+
+The server builds an image per approved Python environment (`nodestro-env:<key>`) on the sandbox daemon and never
+deletes one, also not when a tenant deletes the environment: images are shared by content, so another tenant's
+environment with the same lock may use the same image. Remove unused `nodestro-env:*` images on the sandbox daemon
+yourself (`docker image ls nodestro-env`, `docker image rm …`). An image that is still needed is built again on its
+next use, which needs the package index.
 
 ## Backup and restore
 
@@ -144,8 +194,14 @@ this way.
    API and workers. A database written by a newer release is refused (`storage.schema_too_new`); downgrade by
    restoring the backup.
 
+PostgreSQL migration 5 (added with the backend audit fixes) creates an index on `nodestro_documents`. Building it
+blocks writes to that table until it is done, which takes longer the more documents the database holds: plan a short
+maintenance window, and take the backup first as above.
+
 A run that was executing when its worker stopped is marked `run.interrupted` and waits for a person to continue
-it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step).
+it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step). The
+reaper also marks a run as interrupted that is stored as queued or running without an active job, once it has not
+changed for twice the lease (120 seconds with the default `NODESTRO_WORKER_LEASE_SECONDS`).
 
 ## System requirements (tested)
 
@@ -195,15 +251,16 @@ A release has three separate steps. Only the last two publish anything, and each
 
 ```sh
 python3 scripts/dev-secrets.py                       # random secrets and dev passwords in compose/.secrets/
-scripts/build-image.sh nodestro-server:dev            # NODESTRO_READ=<token> for the private repositories
+scripts/build-image.sh nodestro-server:dev            # NODESTRO_READ=<token> is optional
 NODESTRO_IMAGE=nodestro-server:dev docker compose -f compose/compose.yaml up -d --wait
 ```
 
 Open http://localhost:8080. The users `alice`, `bob` and `mallory` (`@example.com`) log in at Dex with the
 passwords in `compose/.secrets/users.json`. Create a tenant and its setup link with
 `docker compose -f compose/compose.yaml run --rm api create-tenant acme Acme` and `… run --rm api setup-link acme`.
-The API and the worker use the host's network (so `localhost` means the same to the browser and the server),
-which is why the stack is Linux-only. Dex keeps its state in memory and the model stub answers from a script: neither
+To try roles other than owner, let `bob` log in once and then run
+`… run --rm api set-role acme bob@example.com editor`. The API and the worker use the host's network (so
+`localhost` means the same to the browser and the server), which is why the stack is Linux-only. Dex keeps its state in memory and the model stub answers from a script: neither
 is for production.
 
 `scripts/e2e.sh` starts the stack from scratch, runs the acceptance tests in `tests/e2e` and removes the stack.
@@ -211,13 +268,20 @@ is for production.
 ## Security notes
 
 - No route of the studio answers without a session, except the login itself, `/api/health` and the static web
-  interface. Changing requests must come from the studio's origin. Sessions are random tokens; the database holds
-  only their hashes.
+  interface; the API reference (`/api/docs`, `/api/openapi.json`) needs a login too. Changing requests must come
+  from the studio's origin. Sessions are random tokens; the database holds only their hashes.
+- A login is bound to the browser that started it: `/api/auth/login` sets a `__Host-nodestro-login` cookie (valid
+  for 10 minutes) that must match the login's `state` at `/api/auth/callback`; otherwise the callback answers 400
+  `identity.login_expired`.
+- The access log never contains the values of `setup`, `code` and `state` query parameters (setup links and sign-in
+  codes); they are replaced by `[redacted]`.
+- Run, Workflow Architect and assistant event streams end within about 15 seconds after the viewer's session or
+  membership ends.
 - Every request is bound to the session's tenant; a tenant's data is never visible to another tenant.
 - Tenants reach only the model endpoints in `NODESTRO_MODEL_ENDPOINTS` besides the providers' public APIs, so the
   server cannot be used to probe its own network.
-- Secrets never appear in logs, errors or the image. The build reads the private repositories with a BuildKit
-  secret.
+- Secrets never appear in logs, errors or the image. The component repositories are public; a build token, if
+  given, reaches the build only as a BuildKit secret.
 - Not yet: rotation of `NODESTRO_SECRET_KEY`; published workflow APIs on a server (calls are answered with 405);
   batches and test series (their runs end on the workers, but the batch or series stays `running`, because the
   API process that started it does not learn that they ended). Do not offer these as supported server functions.
