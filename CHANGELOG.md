@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Live run chat and steering (LRC-1, 2026-11-01)
+
+- New acceptance test against the built image: the live run chat routes (`/api/runs/{id}/chat`, messages, the
+  event stream) answer through the proxy chain, refuse a target that is not a team leader (404), keep other tenants
+  out (404) and close with the run. Delivery to an orchestrator in the worker is covered by the runtime's PostgreSQL
+  tests: the OpenAI-compatible model stub cannot answer orchestrator decisions (structured output with reasoning
+  effort).
+- RUNBOOK: how the live run chat works on a server, its limits and environment variables.
+- `studio.json` pins studio `0055a30` (before: `b8c6d48`; the merge commit of studio #77, LRC-1 on top of Bedrock):
+  runtime `a42b672`, api `fb7f438`, sdk `dbbc7e5`, orkexa `3467940`.
+
 ### Studio pin: Amazon Bedrock branches (branch only, 2026-11-01)
 
 - `studio.json` pins studio `b8c6d48` (before: `5f96652`), the studio branch with the Bedrock interface and the

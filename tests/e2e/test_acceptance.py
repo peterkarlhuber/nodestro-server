@@ -8,7 +8,9 @@ Every test drives the running stack from the outside (see conftest.py):
 - tool code (untrusted) runs only in a container of the sandbox daemon, never on the server's host, and not at
   all while that daemon is down; tenants reach only the model endpoints the operator allowed;
 - a worker killed in the middle of a run leaves the run interrupted (not executed twice), and other workers go on;
-- a pg_dump backup restores the database.
+- a pg_dump backup restores the database;
+- the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
+  stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing.
 """
 
 from __future__ import annotations
@@ -306,6 +308,36 @@ def test_a_worker_killed_in_the_middle_of_a_run(tenants: Tenants) -> None:
     assert _stub_count(prompt) == 1  # never executed a second time by itself
     after = _finished(alice, _start(alice, _workflow(alice, _flow("After the kill", "ECHO")), "still here"))
     assert after["status"] == "succeeded" and after["output"] == "stub: still here", after
+
+
+# ---- live run chat and steering (LRC-1) ----------------------------------------------------------
+
+
+def test_the_live_run_chat_routes_in_the_image(tenants: Tenants) -> None:
+    # Orchestrator decisions need structured output with reasoning effort, which the OpenAI-compatible stub cannot
+    # serve; delivery from the API process to the worker is covered by the runtime's PostgreSQL tests. Here: the
+    # routes, permissions and tenant isolation of the built image, and the event stream through the proxy chain.
+    alice, bob = tenants.alice, tenants.bob
+    _use_the_stub(alice)
+    prompt = f"SLOW 15 {secrets.token_hex(4)}"
+    run_id = _start(alice, _workflow(alice, _flow("Chat without a team leader", prompt)))
+    wait_for(lambda: _stub_count(prompt) == 1, timeout=180, what="the model call")
+    view = alice.get(f"/api/runs/{run_id}/chat")
+    assert view.status_code == 200, view.text
+    assert view.json()["active"] and view.json()["targets"] == [] and view.json()["messages"] == [], view.json()
+    body = {"kind": "instruction", "target_run_id": run_id, "node_id": "a", "content": "Add a summary"}
+    refused = alice.post(f"/api/runs/{run_id}/chat/messages", json=body)
+    assert refused.status_code == 404 and refused.json()["code"] == "run_chat.unknown_target", refused.text
+    assert bob.get(f"/api/runs/{run_id}/chat").status_code == 404  # another tenant
+    assert bob.post(f"/api/runs/{run_id}/chat/messages", json=body).status_code in (403, 404)
+    with alice.client.stream("GET", f"/api/runs/{run_id}/chat/events", timeout=30) as events:
+        assert events.status_code == 200 and events.headers["content-type"].startswith("text/event-stream")
+        first = next(events.iter_lines())
+        assert first == "event: snapshot", first
+    run = _finished(alice, run_id)
+    assert run["status"] == "succeeded", run
+    closed = alice.post(f"/api/runs/{run_id}/chat/messages", json={**body, "kind": "question", "content": "How?"})
+    assert closed.status_code in (404, 409), closed.text
 
 
 # ---- backup and restore -------------------------------------------------------------------------
