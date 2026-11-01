@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+Security fixes from the independent MCP review (2026-11-01):
+
+- `studio.json` pins studio `19a1127` (before: `e47081f`). That studio pins runtime `f71086a`, api `476cfc0`,
+  examples `69e5e65`, integrations `31a7020` and sdk `7b795f7`. They carry the fixes of the independent MCP review:
+  - per-call approvals hold in agent tests and the tool panel; free agent configurations need `edit`;
+  - destructive MCP calls are decided by administrators;
+  - no credentials in MCP server addresses (stored ones are cleaned and their server switched off at start);
+  - MCP answers are size limited while they are read;
+  - L-2 to L-8.
+
+  They also carry the offline worker fix F5. Nothing is switched on: `NODESTRO_TOOL_APPROVALS` and MCP stay as
+  configured. The first pilot is limited to an isolated test instance.
+
 - RUNBOOK: the "Not yet" list states what published APIs, batches and test series do on a server today (S-2 pilot
   finding F4).
 
