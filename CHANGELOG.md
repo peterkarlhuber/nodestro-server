@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Security fix for tools in workers (S-2 pilot finding F1, 2026-11-01):
+
+- `studio.json` pins studio `24bac8e` (before: `cf4b070`). That studio pins runtime `6ac4ae3` and api `ebd99b3`.
+  Every worker now sees tool changes and deletions made through the API at its next lookup, without a restart, and a
+  running step refuses a tool whose version changed or was deleted since it started, also after an approval or
+  advance approval for the old version. Tool approvals stay off by default.
+
 Adaptive orchestration M6b in the studio and the latest components (2026-11-01):
 
 - `studio.json` pins studio `cf4b070` (before: `4e0dc58`). That studio pins runtime `081705d`, api `ee67eac` and
