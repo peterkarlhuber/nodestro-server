@@ -410,6 +410,13 @@ is for production.
   `sts:AssumeRole`. On EC2, require IMDSv2 with hop limit 1 (see [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants)).
 - Secrets never appear in logs, errors or the image. The component repositories are public; a build token, if
   given, reaches the build only as a BuildKit secret.
+- Live run chat (LRC-1): questions and instructions to an orchestrator of a running run are stored in the tenant's
+  database (`run_messages`); the worker that executes the run reads them at the orchestrator's next decision, so
+  they survive restarts and worker changes, and a worker that lost its lease delivers none. Answers to questions
+  are model calls of the API process (at most 4 at once per process), limited per run (`NODESTRO_RUN_CHAT_BUDGET_USD`,
+  default 0.50; `NODESTRO_RUN_CHAT_MAX_QUESTIONS`, default 30; `NODESTRO_RUN_CHAT_MAX_INSTRUCTIONS` per orchestrator,
+  default 20) and recorded in the usage log (`run_chat`). Runs started by schedules, batches, test series or APIs
+  take instructions only when the workflow's orchestrator allows it (`live_steering: always`).
 - Not yet: rotation of `NODESTRO_SECRET_KEY`; published workflow APIs on a server (calls are answered with 405);
   batches and test series (their runs end on the workers, but the batch or series stays `running`, because the
   API process that started it does not learn that they ended). Do not offer these as supported server functions.
