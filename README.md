@@ -9,8 +9,9 @@ plus a development stack and the end-to-end acceptance tests.
   Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's
   `migrate`, `api` and `worker`.
 - `tests/e2e/`: acceptance tests that drive the running stack like browsers and operators do.
-- `docs/RUNBOOK.md`: installation, members, tested system requirements, configuration, TLS proxy, health checks, the
-  sandbox daemon, backup and restore, upgrades, releases.
+- `docs/RUNBOOK.md`: installation, members, tested system requirements, configuration, Amazon Bedrock for tenants
+  (an IAM role per tenant, never the server's own AWS credentials), TLS proxy, health checks, the sandbox daemon,
+  backup and restore, upgrades, releases.
 
 ## Quick start (development, Linux)
 

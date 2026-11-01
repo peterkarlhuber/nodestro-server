@@ -10,8 +10,13 @@
   tests: the OpenAI-compatible model stub cannot answer orchestrator decisions (structured output with reasoning
   effort).
 - RUNBOOK: how the live run chat works on a server, its limits and environment variables.
-- `studio.json` pins studio `4cc4245` (before: `5f96652`; the LRC-1 branch head, to be replaced by the studio merge
-  commit before this is merged): runtime `fe6f85d`, api `3276855`, sdk `d1eb927`, orkexa `6e69b9c`.
+- `studio.json` pins studio `5e78721` (before: `b8c6d48`; the LRC-1 studio branch on top of Bedrock, to be replaced by
+  the studio merge commit): runtime `b5b765f`, api `6890a2b`, sdk `ed512e7`, orkexa `3467940`.
+
+### Studio pin: Amazon Bedrock branches (branch only, 2026-11-01)
+
+- `studio.json` pins studio `b8c6d48` (before: `5f96652`), the studio branch with the Bedrock interface and the
+  Bedrock branch pins: runtime `ac96c6f`, api `4e2c8cd`, sdk `3ca06b3`, orkexa `3467940` (boto3).
 
 ### Studio pin: final UX initiative state (2026-11-01)
 

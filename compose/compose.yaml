@@ -23,6 +23,11 @@ x-server: &server
     NODESTRO_DATABASE_URL_FILE: /run/secrets/database_url
     NODESTRO_SECRET_KEY_FILE: /run/secrets/secret_key
     NODESTRO_MODEL_ENDPOINTS: http://localhost:9100
+    # Amazon Bedrock (docs/RUNBOOK.md, "Amazon Bedrock for tenants"): off for every tenant unless the operator assigns
+    # an IAM role. Tenants never use this server's own AWS credentials.
+    # NODESTRO_BEDROCK_TENANT_ROLES_FILE: /run/secrets/bedrock_tenant_roles  # {"<tenant_id>": {"role_arn": "…", "external_id": "…"}}
+    # NODESTRO_BEDROCK_DATA_RESIDENCY: eu_only
+    # NODESTRO_BEDROCK_ALLOWED_REGIONS: eu-central-1,eu-west-1
     NODESTRO_WORKER_LEASE_SECONDS: ${NODESTRO_WORKER_LEASE_SECONDS:-60}
     NODESTRO_WORKER_REAP_SECONDS: ${NODESTRO_WORKER_REAP_SECONDS:-15}
     DOCKER_HOST: tcp://localhost:2376
