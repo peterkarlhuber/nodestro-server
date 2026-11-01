@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+Backend audit (2026-11-01):
+
+- `studio.json` pins studio `561c655` (before: `8db9981`). That studio pins runtime `6eacec1`, api `e16202d`,
+  examples `e370567`, integrations `c221485`, sdk `76f7390` and orkexa `6e69b9c`, which carry the fixes of the
+  internal backend audit. This is not an external pentest or certification.
+- New operator commands manage tenant members: `nodestro-server members`, `set-role`, `remove-member` and
+  `revoke-sessions`.
+- New settings: `NODESTRO_WORKER_CLEANUP_SECONDS`, `NODESTRO_DATABASE_POOL_SIZE`,
+  `NODESTRO_DATABASE_STATEMENT_TIMEOUT`, `NODESTRO_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT` and `NODESTRO_RUN_THREADS`.
+- Behavior changes:
+  - `/api/health` answers 503 when the database is unreachable.
+  - Logins are bound to the browser.
+  - The access log is redacted.
+  - The API reference needs a login.
+  - The studio is served gzip-compressed with cache headers.
+- `docs/RUNBOOK.md` and `README.md` are updated accordingly: members, configuration, health checks, environment
+  images, upgrade notes (PostgreSQL migration 5 builds an index at start) and security notes. The docs now say
+  the component repositories are public.
+- MCP, unattended MCP and the tool approval switches stay off by default. The accepted MCP pilot (server `d89aafc`)
+  and the S-2 pilot B pin (`c497bfe`) are not changed; their acceptance does not cover this version.
+
 Example library format 2 (2026-11-01):
 
 - `studio.json` pins studio `8db9981` (before: `ba45ab3`). That studio pins examples `5e2d532` (0.3.0), api `870ba5f`
