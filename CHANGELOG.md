@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+MCP integration complete in the studio and the latest components (2026-11-01):
+
+- `studio.json` pins studio `4e0dc58` (before: `66fe676`). That studio pins runtime `1bc3924` and api `2948bb3`. They
+  bring MCP sign-in (OAuth), local MCP servers in the sandbox container, the operation view, reading a service's
+  listed resources through one approved tool, and Nodestro as an MCP server for published APIs. They also carry the
+  tool approval warnings (S-2, R1) and adaptive orchestration M6a merged since `66fe676`. Nodestro's MCP server stays
+  off unless the operator sets `NODESTRO_MCP_SERVER=1`; unattended MCP use stays off unless `NODESTRO_MCP_UNATTENDED=1`
+  (both need the security acceptance); tool approvals stay off by default. This server configuration sets none of them.
+
 Local Docker sessions, hardened gateway and the latest components (2026-11-01):
 
 - `studio.json` pins studio `66fe676` (before: `d71780a`). That studio pins runtime `a13f894` and api `c58d5de`. They
