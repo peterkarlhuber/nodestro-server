@@ -60,6 +60,10 @@ Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate b
   are referenced by tag.
 - The server's secret key cannot be rotated yet.
 
+## Open work
+
+Known gaps, follow-ups and untested platforms are listed in [docs/TODO.md](docs/TODO.md).
+
 ## License
 
 See [LICENSE](LICENSE).
