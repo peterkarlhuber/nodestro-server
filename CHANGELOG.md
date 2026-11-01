@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+Security fixes from the independent MCP re-review R-1/R-2 (2026-11-01):
+
+- `studio.json` pins studio `ba45ab3` (before: `19a1127`). That studio pins runtime `58cec5c`, api `05e449d`,
+  examples `3429f5b`, integrations `cb8c2da` and sdk `7f60f9b`. They carry:
+  - R-1: an MCP call is decided by an administrator when its stored or current classification is destructive; a
+    reclassification invalidates pending and approved but not yet executed approvals (also for paused runs), and the
+    call is checked again right before it is sent (`tool.approval_stale`);
+  - R-2: `memory` is a reserved tool name; a tool stored under it before is never run.
+- No server change; the tool approval switches stay off by default.
+
 Security fixes from the independent MCP review (2026-11-01):
 
 - `studio.json` pins studio `19a1127` (before: `e47081f`). That studio pins runtime `f71086a`, api `476cfc0`,
