@@ -218,5 +218,6 @@ is for production.
   server cannot be used to probe its own network.
 - Secrets never appear in logs, errors or the image. The build reads the private repositories with a BuildKit
   secret.
-- Not yet: rotation of `NODESTRO_SECRET_KEY`, published workflow APIs on a server, batches and test series in
-  workers (they run in the API process that started them).
+- Not yet: rotation of `NODESTRO_SECRET_KEY`; published workflow APIs on a server (calls are answered with 405);
+  batches and test series (their runs end on the workers, but the batch or series stays `running`, because the
+  API process that started it does not learn that they ended). Do not offer these as supported server functions.
