@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-01 against `master` at `42e95af`.
+> **Last full review:** 2026-11-01 against `master` at `5a4306d`.
 
 ## Summary
 
@@ -11,8 +11,8 @@
 |---|---|
 | P0 Critical | 0 |
 | P1 High | 0 |
-| P2 Medium | 12 |
-| P3 Low | 5 |
+| P2 Medium | 9 |
+| P3 Low | 7 |
 | P4 Optional | 1 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
@@ -47,7 +47,7 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 
 ### SRV-002 · CI must not require the `NODESTRO_READ` secret
 
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** #25, backend audit D-08
+- **Priority:** P2 Medium · **Status:** Open · **Refs:** #25, backend audit D-08; same change in runtime #75 (RT-029)
 - **What:** `ci.yml` and `release.yml` fail without the secret although all component repositories are public, so
   Dependabot PRs (#19) can never pass, and the CI comments still say "private".
 - **Next step:** Make the token optional in both workflows and fix the comments (see #25).
@@ -87,13 +87,6 @@ None known beyond the load test in SRV-013.
 
 ## Features and enhancements
 
-### SRV-006 · Live Run Chat: acceptance test, runbook and studio pin
-
-- **Priority:** P2 Medium · **Status:** In progress · **Refs:** #24
-- **What:** Brings the Live Run Chat routes into the image (studio pin) with an acceptance test and runbook notes.
-  Waiting for the owner's explicit merge approval and the pin cascade order.
-- **Next step:** Merge after approval; re-pin `studio.json` to the studio merge commit first.
-
 ### SRV-007 · Monitoring section in the runbook
 
 - **Priority:** P2 Medium · **Status:** Blocked (on nodestro-api observability, backend audit D-10) · **Refs:** backend audit D-10
@@ -101,7 +94,7 @@ None known beyond the load test in SRV-013.
   document yet, and workers have no liveness signal besides `nodestro-server check`.
 - **Next step:** When the API adds them, add a "Monitoring" section (what to scrape, alert on, log fields) and
   wire the dev stack's health checks to them.
-- **Depends on:** nodestro-api (observability, D-10)
+- **Depends on:** nodestro-api API-011 (observability, D-10)
 
 ## Tests and quality assurance
 
@@ -145,7 +138,7 @@ None known beyond the load test in SRV-013.
 
 ### SRV-013 · PostgreSQL load test on target hardware
 
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** backend audit C-14, C-05
+- **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit C-14, C-05; nodestro-runtime RT-008, RT-020
 - **What:** Store throughput was measured only locally (still about 12 % below the pre-audit figure), and
   `/api/usage` grows linearly with the number of runs. Neither was measured on server hardware under load with
   several workers.
@@ -160,7 +153,7 @@ None known beyond SRV-007.
 
 ### SRV-014 · Reproducible image builds
 
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** #28, backend audit D-05
+- **Priority:** P3 Low · **Status:** Open · **Refs:** #28, backend audit D-05; same decision as nodestro-runtime RT-023
 - **What:** Third-party Python dependencies are resolved at build time inside version ranges; two builds of the same
   `studio.json` can differ.
 - **Next step:** Hashed constraints file next to `studio.json`, installed with `--require-hashes` (see #28).
@@ -201,13 +194,16 @@ None known beyond SRV-007.
 
 | This repo item | Other repo | Other item | Relation |
 |---|---|---|---|
-| SRV-007 | nodestro-api | Observability (D-10) | Blocked by |
-| SRV-013 | nodestro-runtime, nodestro-api | C-14 store throughput, C-05 usage latency | Results feed into |
+| SRV-007 | nodestro-api | API-011 (observability, D-10) | Blocked by |
+| SRV-013 | nodestro-runtime, nodestro-api | RT-008, RT-009, RT-020, API-013, API-023 (C-14 store throughput, C-05 usage latency) | Load test runs here; results feed into |
+| SRV-014 | nodestro-runtime, nodestro-studio | RT-023, ST-028 (D-05) | One shared locking decision |
+| (pointer) | nodestro-runtime | RT-001 (independent S-2 review) | SRV-004 keeps tool approvals off until it passes |
 | SRV-003 | nodestro-local-docker | Image scan (same image definition) | Covers both |
-| – | nodestro-api / nodestro-runtime | Rotation of `NODESTRO_SECRET_KEY` | Owned there; RUNBOOK limitation here |
-| – | nodestro-api | Server batches and test series stay `running`; published workflow APIs answer 405 | Owned there; RUNBOOK limitation here |
-| – | nodestro-api | Member management only via CLI; app-level login rate limit and body size limit (A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
-| – | nodestro-api | `check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES` | Owned there |
+| SRV-016 | nodestro-desktop, nodestro-local-docker | DSK-013, LD-009 (pins at branch heads) | Re-pin in the same cascade |
+| – | nodestro-api / nodestro-runtime | API-005 / RT-010 (rotation of `NODESTRO_SECRET_KEY`) | Owned there; RUNBOOK limitation here |
+| – | nodestro-api | API-006, API-010 (server batches and test series stay `running`; published workflow APIs not served) | Owned there; RUNBOOK limitation here |
+| – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
+| – | nodestro-api | API-008 (`check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES`) | Owned there |
 | – | nodestro-desktop | DSK-011 sync check of shared release scripts | This repo holds the source copies |
 
 ## Maintaining this file
