@@ -194,9 +194,10 @@ this way.
    API and workers. A database written by a newer release is refused (`storage.schema_too_new`); downgrade by
    restoring the backup.
 
-PostgreSQL migration 5 (added with the backend audit fixes) creates an index on `nodestro_documents`. Building it
-blocks writes to that table until it is done, which takes longer the more documents the database holds: plan a short
-maintenance window, and take the backup first as above.
+PostgreSQL migrations 5 and 6 (added with the backend audit fixes) create and rebuild indexes on
+`nodestro_documents` (6 makes the `status` and `trigger_ref` indexes partial, then runs `ANALYZE`). Building them
+blocks writes to that table until they are done, which takes longer the more documents the database holds: plan a
+short maintenance window, and take the backup first as above.
 
 A run that was executing when its worker stopped is marked `run.interrupted` and waits for a person to continue
 it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step). The
