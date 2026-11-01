@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+Local Docker sessions, hardened gateway and the latest components (2026-11-01):
+
+- `studio.json` pins studio `66fe676` (before: `d71780a`). That studio pins runtime `a13f894` and api `c58d5de`. They
+  bring the hardened sandbox gateway of the `local` target (runtime PR #47: image, connection and build-queue limits,
+  seccomp check, strict `ca.pem`, digest-pinned sandbox bases) and Local Docker browser sessions on a random
+  `*.localhost` host name with lifetime and logout plus the Host port check (api PR #29). They also carry the
+  adaptive orchestration (M2 to M5) and tool approval (S-2) work merged since `d71780a`; tool approvals stay off by
+  default.
+
 Connected MCP services in the studio (2026-10-31):
 
 - `studio.json` pins studio `d71780a` (before: `0609fbb`). That studio pins api `a06ccea` (the `/api/mcp` routes,
