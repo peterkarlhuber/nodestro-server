@@ -27,6 +27,7 @@ COMPOSE_FILE = ROOT / "compose" / "compose.yaml"
 os.environ.setdefault("COMPOSE_FILE", str(COMPOSE_FILE))
 ORIGIN = "http://localhost:8080"
 SESSION_COOKIE = "__Host-nodestro-session"
+LOGIN_COOKIE = "__Host-nodestro-login"
 
 
 def compose(
@@ -107,6 +108,11 @@ def login(
     with httpx.Client(follow_redirects=False, timeout=30) as http:
         answer = http.get(f"{ORIGIN}/api/auth/login", params=params)
         assert answer.status_code == 303, answer.text
+        # The login cookie binds the callback to this browser. It is Secure; browsers send it to
+        # http://localhost (a secure context), but httpx does not, so carry it over by hand.
+        found = re.search(rf"{re.escape(LOGIN_COOKIE)}=([^;]+)", answer.headers.get("set-cookie", ""))
+        assert found, answer.headers
+        login_cookie = found.group(1)
         url = answer.headers["location"]
         assert url.startswith("http://localhost:5556/dex/"), url
         # Dex: authorization request -> the password connector's login form.
@@ -126,7 +132,7 @@ def login(
             if url.startswith(f"{ORIGIN}/"):
                 break
             answer = http.get(url)
-        callback = http.get(url)
+        callback = http.get(url, headers={"Cookie": f"{LOGIN_COOKIE}={login_cookie}"})
         if callback.status_code != 303:
             raise LoginRefused(callback)
         token = callback.cookies.get(SESSION_COOKIE)
