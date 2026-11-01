@@ -9,17 +9,19 @@ plus a development stack and the end-to-end acceptance tests.
   Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's
   `migrate`, `api` and `worker`.
 - `tests/e2e/`: acceptance tests that drive the running stack like browsers and operators do.
-- `docs/RUNBOOK.md`: installation, tested system requirements, configuration, TLS proxy, the sandbox daemon, backup
-  and restore, upgrades, releases.
+- `docs/RUNBOOK.md`: installation, members, tested system requirements, configuration, TLS proxy, health checks, the
+  sandbox daemon, backup and restore, upgrades, releases.
 
 ## Quick start (development, Linux)
 
 ```sh
 python3 scripts/dev-secrets.py
-NODESTRO_READ=<token> scripts/build-image.sh nodestro-server:dev
+scripts/build-image.sh nodestro-server:dev            # NODESTRO_READ=<token> is optional
 NODESTRO_IMAGE=nodestro-server:dev docker compose -f compose/compose.yaml up -d --wait
 docker compose -f compose/compose.yaml run --rm api create-tenant acme Acme
 docker compose -f compose/compose.yaml run --rm api setup-link acme   # open the link, log in as alice
+# after bob logged in once (he has no access yet):
+docker compose -f compose/compose.yaml run --rm api set-role acme bob@example.com editor
 ```
 
 The development users and their passwords are in `compose/.secrets/users.json` (generated, never committed).
@@ -53,7 +55,8 @@ Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate b
 - The development stack is Linux-only (the server containers use the host's network). Production installations
   follow the runbook on any Docker host.
 - Dex and the model stub are for development and tests only.
-- Base images are referenced by tag, not by digest.
+- The image's base images are pinned by digest; the development stack's PostgreSQL, Dex and Docker-in-Docker images
+  are referenced by tag.
 - The server's secret key cannot be rotated yet.
 
 ## License
