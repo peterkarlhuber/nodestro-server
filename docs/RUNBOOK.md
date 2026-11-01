@@ -115,10 +115,11 @@ JSON; giving both is refused) maps tenant IDs to roles:
 ```
 
 Use one role and one random external ID per tenant. The server assumes the tenant's role with STS (`ExternalId`,
-session name `nodestro-<tenant>`, short-lived credentials that are refreshed, the regional STS endpoint) in a session
+session name `nodestro-<tenant>`, sessions of 1800 seconds that botocore refreshes 15 minutes before they expire,
+the regional STS endpoint; the role's maximum session duration must allow 1800 seconds) in a session
 of that tenant alone, and gives the tenant's agents only that session. `NODESTRO_BEDROCK_DATA_RESIDENCY=eu_only` forces EU-only processing for all
 tenants (EU regions and EU cross-region inference profiles only). `NODESTRO_BEDROCK_ALLOWED_REGIONS` limits the
-regions further. `nodestro-server check` validates all three.
+regions further. `nodestro-server check` validates all three (`nodestro_runtime.bedrock.BedrockOperatorConfig`).
 
 **The server's base identity** (environment, IRSA/web identity or an instance role) needs only `sts:AssumeRole` on
 the tenant roles, nothing for Bedrock itself:
@@ -174,9 +175,17 @@ add `bedrock:GetGuardrail` (on the guardrail's ARN) only if the tenant uses a gu
 
 A cross-region inference profile also needs the foundation model in every region it routes to (hence the `*`
 region above). The connection check in the studio (Settings, Amazon Bedrock, verify) calls only free read operations
-and never invokes a model:
+and never invokes a model: `sts:GetCallerIdentity` (allowed for every identity, no policy needed) and
+`bedrock:ListFoundationModels`, or `bedrock:GetInferenceProfile` / `bedrock:GetFoundationModel` when a model is given.
+Add to the tenant role:
 
-<!-- bedrock-verify-permission -->
+```json
+{
+  "Effect": "Allow",
+  "Action": ["bedrock:ListFoundationModels", "bedrock:GetFoundationModel"],
+  "Resource": "*"
+}
+```
 
 **Keep data in the EU** with a service control policy in addition to `eu_only`, so that no credential of the
 account can call Bedrock outside the EU:
