@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Example library format 2 (2026-11-01):
+
+- `studio.json` pins studio `8db9981` (before: `ba45ab3`). That studio pins examples `5e2d532` (0.3.0), api `870ba5f`
+  and sdk `d71fadd`; runtime `58cec5c` and integrations `cb8c2da` are unchanged. The 24 examples are reworked
+  (teams, knowledge files, optional read-only MCP integrations with an offline mode); copying an example creates its
+  parts as workflows and stores its knowledge files.
+- No server change; MCP, unattended MCP and the tool approval switches stay off by default.
+
 Security fixes from the independent MCP re-review R-1/R-2 (2026-11-01):
 
 - `studio.json` pins studio `ba45ab3` (before: `19a1127`). That studio pins runtime `58cec5c`, api `05e449d`,

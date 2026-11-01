@@ -1,4 +1,4 @@
 {
   "comment": "The studio commit the server image is built from (a merge commit on nodestro-studio master; it pins every component).",
-  "nodestro-studio": "ba45ab393218f05d55ef0d266425c810ff410405"
+  "nodestro-studio": "8db9981dcad915cad457912da7e199c6c42457cb"
 }
