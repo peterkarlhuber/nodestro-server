@@ -12,8 +12,8 @@
 | P0 Critical | 0 |
 | P1 High | 0 |
 | P2 Medium | 9 |
-| P3 Low | 7 |
-| P4 Optional | 1 |
+| P3 Low | 6 |
+| P4 Optional | 2 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
 `v0.2.0-preview.1` server candidate may be prepared, but publishing needs an explicit owner decision (SRV-001).
@@ -165,12 +165,12 @@ None known beyond SRV-007.
   README); the image's own bases are pinned by digest.
 - **Next step:** Pin them by digest and let Dependabot (docker ecosystem) keep them current.
 
-### SRV-016 · Pin hygiene: merge commits and pin distance
+### SRV-016 · Warn when the pinned studio falls behind
 
-- **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit D-01
-- **What:** `studio.json` pins `b8c6d48`, a studio branch head, although its comment promises a master merge commit;
-  CI does not warn when the pin falls behind the latest studio platform commit.
-- **Next step:** Re-pin to a merge commit in the next cascade; add a CI warning for pin distance.
+- **Priority:** P4 Optional · **Status:** Open · **Refs:** `studio.json`, backend audit D-01
+- **What:** `studio.json` now pins master merge commits (re-pinned with the Live Run Chat cascade), but CI checks only that
+  the pins resolve, not how far they lag behind the latest studio platform commit.
+- **Next step:** Add a CI warning for pin distance; keep pinning merge commits in every cascade.
 
 ## Later optimizations
 
@@ -199,7 +199,7 @@ None known beyond SRV-007.
 | SRV-014 | nodestro-runtime, nodestro-studio | RT-023, ST-028 (D-05) | One shared locking decision |
 | (pointer) | nodestro-runtime | RT-001 (independent S-2 review) | SRV-004 keeps tool approvals off until it passes |
 | SRV-003 | nodestro-local-docker | Image scan (same image definition) | Covers both |
-| SRV-016 | nodestro-desktop, nodestro-local-docker | DSK-013, LD-009 (pins at branch heads) | Re-pin in the same cascade |
+| SRV-016 | nodestro-desktop, nodestro-local-docker | DSK-013, LD-009 (pin distance warning) | Same check in all three |
 | – | nodestro-api / nodestro-runtime | API-005 / RT-010 (rotation of `NODESTRO_SECRET_KEY`) | Owned there; RUNBOOK limitation here |
 | – | nodestro-api | API-006, API-010 (server batches and test series stay `running`; published workflow APIs not served) | Owned there; RUNBOOK limitation here |
 | – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
