@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Runs paused at a tool approval (AO M6b, behind a switch, 2026-11-01):
+
+- `studio.json` pins studio `e47081f` (before: `24bac8e`). That studio pins runtime `c86781b` and api `ae6cecd`.
+  With `NODESTRO_TOOL_APPROVALS=1` and the new `NODESTRO_TOOL_APPROVAL_CHECKPOINTS=1` (both off by default) a tool
+  call that waits for a person pauses the run and frees its worker; the decision continues it on any worker, exactly
+  once, and every worker runs the deadline sweep (once before serving, then periodically). Nothing changes while
+  the switches are off.
+
 Security fix for tools in workers (S-2 pilot finding F1, 2026-11-01):
 
 - `studio.json` pins studio `24bac8e` (before: `cf4b070`). That studio pins runtime `6ac4ae3` and api `ebd99b3`.
