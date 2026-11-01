@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Adaptive orchestration M6b in the studio and the latest components (2026-11-01):
+
+- `studio.json` pins studio `cf4b070` (before: `4e0dc58`). That studio pins runtime `081705d`, api `ee67eac` and
+  orkexa `a06185d`. They bring orchestrators with dynamic teams (staffing, parallel teams, team parameters; all off
+  per orchestrator by default), approval steps inside orchestrated teams that pause instead of cancelling, the run
+  view of an orchestrator (team over time, outcomes, limits and costs, save the team as a template) and the welcome
+  page. No new server switch; tool approvals stay off by default and this server configuration sets none of them.
+
 MCP integration complete in the studio and the latest components (2026-11-01):
 
 - `studio.json` pins studio `4e0dc58` (before: `66fe676`). That studio pins runtime `1bc3924` and api `2948bb3`. They
