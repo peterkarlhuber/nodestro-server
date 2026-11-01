@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Live run chat and steering (LRC-1, 2026-11-01)
+
+- New acceptance test against the built image: the live run chat routes (`/api/runs/{id}/chat`, messages, the
+  event stream) answer through the proxy chain, refuse a target that is not a team leader (404), keep other tenants
+  out (404) and close with the run. Delivery to an orchestrator in the worker is covered by the runtime's PostgreSQL
+  tests: the OpenAI-compatible model stub cannot answer orchestrator decisions (structured output with reasoning
+  effort).
+- RUNBOOK: how the live run chat works on a server, its limits and environment variables.
+- `studio.json` pins studio `4cc4245` (before: `5f96652`; the LRC-1 branch head, to be replaced by the studio merge
+  commit before this is merged): runtime `fe6f85d`, api `3276855`, sdk `d1eb927`, orkexa `6e69b9c`.
+
 ### Studio pin: final UX initiative state (2026-11-01)
 
 - `studio.json` pins studio `5f96652` (before: `90f08ce`): the final UX initiative work (orchestration rounds view,
