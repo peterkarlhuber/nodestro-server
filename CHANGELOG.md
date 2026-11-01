@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Studio pin: PostgreSQL read performance, accessibility (2026-11-01)
+
+- `studio.json` pins studio `90f08ce` (before: `561c655`): runtime `d141b8f` (pool checks only idle connections,
+  read retry on a lost connection, autocommit single writes, PostgreSQL migration 0006 with partial find indexes),
+  api `db6a696`, sdk `4a97cef`, and the UX work merged on studio master in between (accessibility, in-app docs).
+- RUNBOOK: the maintenance note now covers migrations 5 and 6.
+
 Backend audit (2026-11-01):
 
 - `studio.json` pins studio `561c655` (before: `8db9981`). That studio pins runtime `6eacec1`, api `e16202d`,
