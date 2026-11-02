@@ -7,8 +7,9 @@
 - `studio.json` pins studio `f79c11d` (before: `d2724c2`; the merge commit of studio #102, which contains d2724c2): axentra `024da57`,
   orkexa `3364fb8`, nodestro-runtime `0369132`, nodestro-api `3e0a874`, nodestro-examples `b7a1d65`,
   nodestro-integrations `0de02d0`. The security review fixes below take effect with this pin.
-- The acceptance test for a backup before the first upload is no longer an expected failure (fixed in nodestro-api
-  `df97118`).
+- SRV-020 is closed (fixed in nodestro-api `df97118`: an empty archive while nothing is stored). Its acceptance test now
+  checks the other side: with files recorded, a missing storage directory makes `backup` fail instead of writing an
+  empty archive.
 
 ### Security review fixes, documented
 

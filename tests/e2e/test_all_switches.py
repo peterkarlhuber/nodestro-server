@@ -9,7 +9,7 @@ must pass unchanged with every switch on); without it they are skipped. They che
 - logins through Dex go through Axentra (identity backend ``axentra``), and both identity sides agree;
 - tenant secrets are stored in the ``axs1`` format;
 - an uploaded input file lands in Axentra's storage, not on the data volume, and reads back unchanged;
-- ``backup`` succeeds before the first upload, while Axentra's storage directory does not exist yet;
+- ``backup`` refuses a missing storage directory while files are stored (no silently empty archive);
 - a failed run reaches the members' in-app inbox (``/api/notifications``), and only theirs;
 - the audit and usage mirrors and the run usage settlement leave nothing for ``axentra reconcile`` to write.
 """
@@ -172,9 +172,11 @@ def test_an_uploaded_input_file_lands_in_axentras_storage(tenants: Tenants) -> N
     assert _json_output(verify.stdout)["ok"] is True, verify.stdout
 
 
-def test_a_backup_before_the_first_upload(stack: None) -> None:
-    # A storage directory no file was written to yet, as on a new installation: Axentra's own configuration with
-    # another local_path, mounted next to the real one.
+def test_a_backup_refuses_a_missing_storage_directory_while_files_are_stored(stack: None) -> None:
+    # Files are recorded (an earlier test uploaded one), but Axentra's storage directory is missing (another
+    # local_path, mounted next to the real one): an empty archive would lose them, so the backup must fail. The
+    # fresh installation (nothing stored, no directory: an empty archive) is nodestro-api's
+    # tests/test_server_files.py.
     with tempfile.TemporaryDirectory() as directory:
         Path(directory).chmod(0o777)  # the image's user (10001) writes the dump
         config = Path(directory) / "fresh.toml"
@@ -182,7 +184,9 @@ def test_a_backup_before_the_first_upload(stack: None) -> None:
         config.chmod(0o644)
         flags = ["-v", f"{directory}:/backups", "-e", "NODESTRO_AXENTRA_CONFIG=/backups/fresh.toml"]
         result = compose("run", "--rm", "--no-deps", "-T", *flags, "migrate", "backup", "/backups", check=False)
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "storage.backup_failed" in result.stderr and "axentra-storage-new" in result.stderr, result.stderr
+        assert not list(Path(directory).glob("nodestro-files-*")), "no files archive next to the dump"
 
 
 # ---- notifications -----------------------------------------------------------------------------------------------
