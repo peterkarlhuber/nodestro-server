@@ -1,0 +1,5 @@
+#!/bin/sh
+# The dind entrypoint exports container=docker, and containerd then reports "no AppArmor" even on an AppArmor
+# host, so the daemon starts its containers unconfined. This wrapper (first in PATH) starts dockerd without it.
+unset container
+exec /usr/local/bin/dockerd "$@"

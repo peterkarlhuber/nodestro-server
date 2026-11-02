@@ -11,7 +11,9 @@ Every test drives the running stack from the outside (see conftest.py):
 - a suspended tenant is closed (sessions, logins, its runs) until it is resumed, and other tenants go on;
 - a pg_dump backup restores the database;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
-  stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing.
+  stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
+- run budget decisions (BUDGET-1): a run in the worker pauses before a request its budget cannot cover, a raise in
+  the API process continues it in a worker, and the request is sent exactly once.
 """
 
 from __future__ import annotations
@@ -258,10 +260,42 @@ def _sandbox_containers(since: float, *, host: bool = False) -> list[str]:
         output = subprocess.run(events, capture_output=True, text=True, check=True, timeout=60).stdout
     else:
         output = compose("exec", "-T", "sandbox", *events).stdout
-    return [name for name in output.split() if name.startswith("nodestro-sandbox-")]
+    # Tool code runs in Orkexa's containers (``orkexa-sandbox-*``) since the runtime uses Orkexa's run shape;
+    # ``nodestro-sandbox-*`` are the runtime's own (dependency checks). Self-test containers are not counted.
+    return [name for name in output.split() if name.startswith(("orkexa-sandbox-", "nodestro-sandbox-"))]
+
+
+def _sandbox_approved(browser: Browser, timeout: float = 900) -> None:
+    """Wait until the API's Docker monitor has passed the preflight and the in-container self-test.
+
+    A fresh sandbox daemon first builds the sandbox image and runs the self-test in the background; until then the
+    state is ``checking`` and tool code is refused with ``docker-checking`` (nothing runs without that proof)."""
+
+    def approved() -> dict[str, Any] | None:
+        answer = browser.get("/api/sandbox/status", params={"wait": 5}, timeout=60)
+        assert answer.status_code == 200, answer.text
+        body = dict(answer.json())
+        assert body.get("state") in ("checking", "approved"), body  # the sandbox daemon must not be refused
+        return body if body["state"] == "approved" else None
+
+    wait_for(approved, timeout=timeout, every=1, what="the Docker sandbox check of the API")
+
+
+def _finished_in_sandbox(browser: Browser, workflow_id: str, timeout: float = 900) -> dict[str, Any]:
+    """A run of ``workflow_id``, started again while the worker's own Docker check is still running.
+
+    Every process proves the daemon itself; a worker's check starts with its first job, so a tool call in a run can be
+    refused with ``docker-checking`` for a while after the worker started. Any other result is returned as it is."""
+    deadline = time.monotonic() + timeout
+    while True:
+        run = _finished(browser, _start(browser, workflow_id))
+        if "docker-checking" not in json.dumps(run) or time.monotonic() > deadline:
+            return run
+        time.sleep(10)
 
 
 def _save_tool(browser: Browser) -> None:
+    _sandbox_approved(browser)
     saved = browser.post("/api/tools", json={"function_name": "shout", "code": TOOL, "tests": TOOL_TESTS}, timeout=900)
     assert saved.status_code in (200, 201), saved.text
     assert saved.json()["tool"] is not None, saved.text  # its tests passed (in the sandbox)
@@ -277,7 +311,7 @@ def test_tool_code_runs_only_in_a_container_of_the_sandbox_daemon(tenants: Tenan
     # In a run, executed by a worker: the agent (the model stub) calls the tool.
     _use_the_stub(alice)
     prompt = f"CALL shout {json.dumps({'text': 'in a run'})}"
-    run = _finished(alice, _start(alice, _workflow(alice, _flow("Tool run", prompt, tools=["shout"]))))
+    run = _finished_in_sandbox(alice, _workflow(alice, _flow("Tool run", prompt, tools=["shout"])))
     assert run["status"] == "succeeded", run
     assert run["output"] == "tool said: IN A RUN!", run
     # Tests, the direct call and the run each started containers on the sandbox daemon, none on the host's.
@@ -304,6 +338,7 @@ def test_without_the_sandbox_daemon_tool_code_does_not_run_at_all(tenants: Tenan
     finally:
         compose("start", "sandbox")
         wait_healthy("sandbox")
+        _sandbox_approved(alice)  # the restarted daemon is proven again before later tests run tool code
 
 
 # ---- workers ------------------------------------------------------------------------------------
@@ -354,6 +389,43 @@ def test_the_live_run_chat_routes_in_the_image(tenants: Tenants) -> None:
     assert run["status"] == "succeeded", run
     closed = alice.post(f"/api/runs/{run_id}/chat/messages", json={**body, "kind": "question", "content": "How?"})
     assert closed.status_code in (404, 409), closed.text
+
+
+# ---- run budget decisions (BUDGET-1) -------------------------------------------------------------
+
+
+def test_a_budget_decision_in_the_api_continues_the_run_in_the_worker(tenants: Tenants) -> None:
+    """A run in the worker pauses before a request its budget cannot cover; the decision in the API process continues
+    it in a worker, the request is sent exactly once, and another tenant sees nothing of it."""
+    alice, bob = tenants.alice, tenants.bob
+    _use_the_stub(alice)
+    price = {"input_usd_per_mtok": "3", "output_usd_per_mtok": "15", "quality": "contract"}
+    priced = alice.put("/api/pricing/overrides/compatible/stub-model", json=price)
+    assert priced.status_code == 200, priced.text
+    prompt = f"ECHO {secrets.token_hex(4)}"
+    flow = {**_flow("Budget decision", prompt, max_tokens=1000), "budget_usd": 0.0001}
+    run_id = _start(alice, _workflow(alice, flow), "budget")
+    paused = wait_for(
+        lambda: (run := _run(alice, run_id))["status"] == "paused" and run, timeout=180, every=1, what="the pause"
+    )
+    assert paused["nodes"]["a"]["status"] == "awaiting_budget", paused
+    assert _stub_count(prompt) == 0  # nothing was sent
+    view = alice.get(f"/api/runs/{run_id}/budget").json()
+    pending = view["pending"]
+    assert pending is not None and view["policy"]["can_decide"], view
+    assert [item["id"] for item in alice.get("/api/budget-requests").json()] == [pending["id"]]
+    assert bob.get(f"/api/runs/{run_id}/budget").status_code == 404
+    assert bob.get("/api/budget-requests").json() == []
+    body = {"request_id": pending["id"], "action": "raise", "limit_usd": "1.00", "idempotency_key": "e2e-1"}
+    assert bob.post(f"/api/runs/{run_id}/budget/decisions", json=body).status_code == 404
+    decided = alice.post(f"/api/runs/{run_id}/budget/decisions", json=body)
+    assert decided.status_code == 200, decided.text
+    run = _finished(alice, run_id, timeout=300)
+    assert run["status"] == "succeeded" and run["output"] == "stub: budget", run
+    assert run["budget"]["limit_usd"] == "1.00" and _stub_count(prompt) == 1
+    workflow = alice.get(f"/api/workflows/{run['workflow_id']}").json()
+    assert workflow["budget_usd"] == 0.0001  # the stored budget is unchanged
+    assert alice.delete("/api/pricing/overrides/compatible/stub-model").status_code == 204
 
 
 # ---- suspended tenants --------------------------------------------------------------------------------------------

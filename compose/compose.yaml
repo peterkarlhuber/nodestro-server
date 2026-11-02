@@ -81,8 +81,11 @@ services:
 
   # The Docker daemon that runs tool code. It is not the host's daemon: tool containers, their images and the
   # daemon's network live inside this container. TLS with client certificates; the port is on 127.0.0.1 only.
+  # Built from docker:29.9.2-dind plus the AppArmor parser, so that on an AppArmor host the daemon confines its
+  # containers with docker-default (Nodestro's self-test refuses unconfined containers there; sandbox/Dockerfile).
   sandbox:
-    image: docker:29.9.2-dind
+    build: ./sandbox
+    image: nodestro-sandbox-dind:29.9.2
     restart: unless-stopped
     privileged: true
     environment:
