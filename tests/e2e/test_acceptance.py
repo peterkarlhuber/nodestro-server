@@ -10,7 +10,9 @@ Every test drives the running stack from the outside (see conftest.py):
 - a worker killed in the middle of a run leaves the run interrupted (not executed twice), and other workers go on;
 - a pg_dump backup restores the database;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
-  stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing.
+  stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
+- run budget decisions (BUDGET-1): a run in the worker pauses before a request its budget cannot cover, a raise in
+  the API process continues it in a worker, and the request is sent exactly once.
 """
 
 from __future__ import annotations
@@ -338,6 +340,43 @@ def test_the_live_run_chat_routes_in_the_image(tenants: Tenants) -> None:
     assert run["status"] == "succeeded", run
     closed = alice.post(f"/api/runs/{run_id}/chat/messages", json={**body, "kind": "question", "content": "How?"})
     assert closed.status_code in (404, 409), closed.text
+
+
+# ---- run budget decisions (BUDGET-1) -------------------------------------------------------------
+
+
+def test_a_budget_decision_in_the_api_continues_the_run_in_the_worker(tenants: Tenants) -> None:
+    """A run in the worker pauses before a request its budget cannot cover; the decision in the API process continues
+    it in a worker, the request is sent exactly once, and another tenant sees nothing of it."""
+    alice, bob = tenants.alice, tenants.bob
+    _use_the_stub(alice)
+    price = {"input_usd_per_mtok": "3", "output_usd_per_mtok": "15", "quality": "contract"}
+    priced = alice.put("/api/pricing/overrides/compatible/stub-model", json=price)
+    assert priced.status_code == 200, priced.text
+    prompt = f"ECHO {secrets.token_hex(4)}"
+    flow = {**_flow("Budget decision", prompt, max_tokens=1000), "budget_usd": 0.0001}
+    run_id = _start(alice, _workflow(alice, flow), "budget")
+    paused = wait_for(
+        lambda: (run := _run(alice, run_id))["status"] == "paused" and run, timeout=180, every=1, what="the pause"
+    )
+    assert paused["nodes"]["a"]["status"] == "awaiting_budget", paused
+    assert _stub_count(prompt) == 0  # nothing was sent
+    view = alice.get(f"/api/runs/{run_id}/budget").json()
+    pending = view["pending"]
+    assert pending is not None and view["policy"]["can_decide"], view
+    assert [item["id"] for item in alice.get("/api/budget-requests").json()] == [pending["id"]]
+    assert bob.get(f"/api/runs/{run_id}/budget").status_code == 404
+    assert bob.get("/api/budget-requests").json() == []
+    body = {"request_id": pending["id"], "action": "raise", "limit_usd": "1.00", "idempotency_key": "e2e-1"}
+    assert bob.post(f"/api/runs/{run_id}/budget/decisions", json=body).status_code == 404
+    decided = alice.post(f"/api/runs/{run_id}/budget/decisions", json=body)
+    assert decided.status_code == 200, decided.text
+    run = _finished(alice, run_id, timeout=300)
+    assert run["status"] == "succeeded" and run["output"] == "stub: budget", run
+    assert run["budget"]["limit_usd"] == "1.00" and _stub_count(prompt) == 1
+    workflow = alice.get(f"/api/workflows/{run['workflow_id']}").json()
+    assert workflow["budget_usd"] == 0.0001  # the stored budget is unchanged
+    assert alice.delete("/api/pricing/overrides/compatible/stub-model").status_code == 204
 
 
 # ---- backup and restore -------------------------------------------------------------------------

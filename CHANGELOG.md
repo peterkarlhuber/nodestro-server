@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Run budget decisions (BUDGET-1, 2026-11-02)
+
+- RUNBOOK: section "Run budget decisions" and the operator cap `NODESTRO_MAX_RUN_BUDGET_USD`.
+- New end-to-end test: a run in the worker pauses for a budget decision, a raise in the API process continues it in
+  a worker, the request is sent once, another tenant sees nothing.
+
 ### Axentra platform services, documented (2026-11-02)
 
 - `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`
