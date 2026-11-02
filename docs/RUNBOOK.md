@@ -445,9 +445,10 @@ not get the host's own daemon or socket. Options, from most to least isolated:
 
 On a host with AppArmor (Ubuntu, Debian) the sandbox daemon must confine its containers with an enforcing profile:
 the server's self-test refuses unconfined containers there, and tool code does not run (Settings → Sandbox and
-`GET /api/sandbox/status` name the failed check). The stock `docker:dind` image cannot load a profile because it has
-no `apparmor_parser`; `compose/sandbox/Dockerfile` adds it, so the daemon loads `docker-default`. A dedicated Docker
-VM with AppArmor does this by default.
+`GET /api/sandbox/status` name the failed check). The stock `docker:dind` image starts its containers unconfined (it has
+no `apparmor_parser`, and its entrypoint sets `container=docker`, which makes containerd skip AppArmor);
+`compose/sandbox/Dockerfile` adds the parser and starts `dockerd` without that variable, so the daemon confines its
+containers with `docker-default`. A dedicated Docker VM with AppArmor does this by default.
 
 Optionally use a stronger runtime for the sandbox daemon (gVisor `runsc`, Kata Containers).
 

@@ -12,9 +12,9 @@
 - Sandbox e2e tests wait for the Docker check: the API's monitor must report `approved` (`GET /api/sandbox/status`)
   before a tool is saved and after the sandbox daemon is restarted; a run refused with `docker-checking` while the
   worker's own check still runs is started again. Since the start-up preflight, the self-test runs in the background.
-- The compose sandbox daemon is built from `docker:29.9.2-dind` plus `apparmor` (`compose/sandbox/Dockerfile`): on an
-  AppArmor host the stock image started tool containers unconfined, which the self-test (orkexa #34) refuses. RUNBOOK:
-  the sandbox daemon must confine its containers on AppArmor hosts.
+- The compose sandbox daemon is built from `docker:29.9.2-dind` plus `apparmor` and a `dockerd` wrapper that unsets
+  `container` (`compose/sandbox/`): on an AppArmor host the stock image started tool containers unconfined, which the
+  self-test (orkexa #34) refuses. RUNBOOK: the sandbox daemon must confine its containers on AppArmor hosts.
 
 ### Every Axentra switch on, end to end (development stack only)
 
