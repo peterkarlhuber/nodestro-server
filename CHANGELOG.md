@@ -4,6 +4,8 @@
 
 ### Run budget decisions (BUDGET-1, 2026-11-02)
 
+- `studio.json` pins studio `86f2e93` (before: `1db50b8`; the merge commit of studio #97): nodestro-runtime `64895e6`,
+  nodestro-api `5519708`, nodestro-examples `59fc96b`, nodestro-integrations `991dcf9`, orkexa `e220f70`.
 - RUNBOOK: section "Run budget decisions" and the operator cap `NODESTRO_MAX_RUN_BUDGET_USD`.
 - New end-to-end test: a run in the worker pauses for a budget decision, a raise in the API process continues it in
   a worker, the request is sent once, another tenant sees nothing.
