@@ -42,6 +42,8 @@ jobs:
           bases = [args.get(m.strip("${}"), m) for m in re.findall(r"^FROM (\S+)", text, re.M)]
           stages = set(re.findall(r"^FROM \S+ AS (\S+)", text, re.M)) | {"scratch"}
           loose = [base for base in bases if base not in stages and "@sha256:" not in base]
+          # The privileged sandbox daemon of the compose stack (compose/sandbox/Dockerfile) as well.
+          loose += [b for b in re.findall(r"^FROM (\S+)", open("compose/sandbox/Dockerfile").read(), re.M) if "@sha256:" not in b]
           compose = re.findall(r"image: (python:\S+)", open("compose/compose.yaml").read())
           loose += [image for image in compose if "@sha256:" not in image]
           sys.exit(f"not pinned by digest: {loose}" if loose else 0)

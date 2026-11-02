@@ -15,6 +15,8 @@
 - The compose sandbox daemon is built from `docker:29.9.2-dind` plus `apparmor` and a `dockerd` wrapper that unsets
   `container` (`compose/sandbox/`): on an AppArmor host the stock image started tool containers unconfined, which the
   self-test (orkexa #34) refuses. RUNBOOK: the sandbox daemon must confine its containers on AppArmor hosts.
+- The sandbox daemon's base `docker:29.9.2-dind` is pinned by its index digest and `apparmor` by version
+  (`4.1.7-r1`); CI's digest check covers `compose/sandbox/Dockerfile` too.
 
 ### Every Axentra switch on, end to end (development stack only)
 
