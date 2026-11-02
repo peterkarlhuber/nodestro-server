@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-### Security review fixes, documented (take effect with the next runtime/api pins)
+### Pins: Axentra migration completion and security review fixes (2026-11-02)
+
+- `studio.json` pins studio `f79c11d` (before: `1db50b8`; the merge commit of studio #102): axentra `024da57`,
+  orkexa `3364fb8`, nodestro-runtime `0369132`, nodestro-api `3e0a874`, nodestro-examples `b7a1d65`,
+  nodestro-integrations `0de02d0`. The security review fixes below take effect with this pin.
+- The acceptance test for a backup before the first upload is no longer an expected failure (fixed in nodestro-api
+  `df97118`).
+
+### Security review fixes, documented
 
 - Members: an e-mail address no longer names a user by itself in `set-role`, `remove-member` and `revoke-sessions`
   (SR-10): on a terminal the command shows the user with their identity and asks for the user id; otherwise it stops
