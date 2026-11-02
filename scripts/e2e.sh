@@ -37,6 +37,12 @@ docker compose exec -T sandbox sh -c '
   mountpoint /sys/kernel/security; ls /sys/kernel/security 2>&1; cat /sys/module/apparmor/parameters/enabled 2>&1
   cat /proc/self/attr/current 2>&1; grep -c docker-default /sys/kernel/security/apparmor/profiles 2>&1
   docker info --format "{{json .SecurityOptions}}"
-  docker run --rm alpine:3.22 cat /proc/self/attr/current 2>&1' || true
+  docker run --rm alpine:3.22 cat /proc/self/attr/current 2>&1
+  cat /proc/self/attr/apparmor/current 2>&1; cat /sys/kernel/security/lsm; echo
+  grep -E "docker-default|containerd|unconfined" /sys/kernel/security/apparmor/profiles 2>&1 | head
+  id=$(docker create alpine:3.22 cat /proc/self/attr/apparmor/current)
+  docker inspect --format "AppArmorProfile={{.AppArmorProfile}}" "$id"; docker start -a "$id"; docker rm "$id" >/dev/null
+  docker run --rm --security-opt apparmor=docker-default alpine:3.22 cat /proc/self/attr/apparmor/current 2>&1
+  runc --version 2>&1 | head -1; ps -o args= -p "$(pidof dockerd)"' || true
 docker compose up -d --wait --wait-timeout 600 api worker
 NODESTRO_E2E=1 python3 -m pytest -p no:cacheprovider tests/e2e "$@"
