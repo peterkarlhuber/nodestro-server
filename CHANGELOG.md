@@ -4,7 +4,7 @@
 
 ### Pins: Axentra migration completion and security review fixes (2026-11-02)
 
-- `studio.json` pins studio `f79c11d` (before: `1db50b8`; the merge commit of studio #102): axentra `024da57`,
+- `studio.json` pins studio `f79c11d` (before: `d2724c2`; the merge commit of studio #102, which contains d2724c2): axentra `024da57`,
   orkexa `3364fb8`, nodestro-runtime `0369132`, nodestro-api `3e0a874`, nodestro-examples `b7a1d65`,
   nodestro-integrations `0de02d0`. The security review fixes below take effect with this pin.
 - The acceptance test for a backup before the first upload is no longer an expected failure (fixed in nodestro-api
@@ -21,6 +21,20 @@
   run it after switching back from `volume` (SR-09). The volume catalog is locked across processes (SR-08).
 - Backups: an empty storage archive before the first upload; a clear error when `pg_dump` runs without the owner
   role. A duplicated sentence in the backup paragraph is gone.
+
+### Run budget decisions (BUDGET-1, 2026-11-02)
+
+- `studio.json` pins studio `d2724c2` (the merge commit of studio #101, with BUDGET-1 from studio #97 and the server
+  start-up fix of nodestro-api #65): nodestro-runtime `bf9af7d`, nodestro-api `dde77f5`, orkexa `3364fb8`.
+- RUNBOOK: section "Run budget decisions" and the operator cap `NODESTRO_MAX_RUN_BUDGET_USD`.
+- New end-to-end test: a run in the worker pauses for a budget decision, a raise in the API process continues it in
+  a worker, the request is sent once, another tenant sees nothing.
+- Sandbox e2e tests wait for the Docker check: the API's monitor must report `approved` (`GET /api/sandbox/status`)
+  before a tool is saved and after the sandbox daemon is restarted; a run refused with `docker-checking` while the
+  worker's own check still runs is started again. Since the start-up preflight, the self-test runs in the background.
+- The compose sandbox daemon is built from `docker:29.9.2-dind` plus `apparmor` and a `dockerd` wrapper that unsets
+  `container` (`compose/sandbox/`): on an AppArmor host the stock image started tool containers unconfined, which the
+  self-test (orkexa #34) refuses. RUNBOOK: the sandbox daemon must confine its containers on AppArmor hosts.
 
 ### Every Axentra switch on, end to end (development stack only)
 

@@ -86,6 +86,7 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_BEDROCK_TENANT_ROLES` / `_FILE` | Amazon Bedrock: the IAM role each tenant uses, as JSON `{"<tenant_id>": {"role_arn": "…", "external_id": "…"}}`. Unset: no tenant can use Bedrock. See [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants) |
 | `NODESTRO_BEDROCK_DATA_RESIDENCY` | `eu_only`: every tenant's Bedrock calls stay in EU regions; a tenant cannot relax it. Unset: each tenant chooses |
 | `NODESTRO_BEDROCK_ALLOWED_REGIONS` | Comma-separated AWS regions tenants may use for Bedrock (e.g. `eu-central-1,eu-west-1`). Unset: no extra limit |
+| `NODESTRO_MAX_RUN_BUDGET_USD` | The highest budget a person may set for one run when it waits for a budget decision (all tenants; a tenant's own `max_run_budget_usd` can only be lower). Empty: no operator maximum. A raise never changes a stored workflow or another run |
 | `NODESTRO_WORKER_LEASE_SECONDS` | How long a run stays a worker's without a heartbeat (default 60) |
 | `NODESTRO_WORKER_POLL_SECONDS`, `NODESTRO_WORKER_REAP_SECONDS` | Worker intervals (defaults 1 and 15) |
 | `NODESTRO_WORKER_CLEANUP_SECONDS` | How often the scheduler leader cleans up (default 600): it deletes expired sessions and abandoned login starts, finished jobs after 7 days and run events after 2 days (the runs themselves stay) |
@@ -392,6 +393,16 @@ The server has no rate limit for logins of its own, so a rate limit for `/api/au
 `proxy_*` settings). The server serves the studio gzip-compressed, with long-lived immutable caching for the
 content-hashed files under `/assets` and `no-cache` for `index.html`, so the proxy need not compress it.
 
+## Run budget decisions
+
+An attended run whose next model request does not fit its budget pauses before the request is sent and waits for a
+decision (Studio: the run, the Approvals page). While it waits it holds no worker and no job; the decision, made in
+the API process, queues it again and any worker continues it from its checkpoint. The worker's periodic sweep
+(`NODESTRO_WORKER_REAP_SECONDS`) expires unanswered requests after the tenant's `budget_decision_hours` (default 24)
+and continues runs whose decision the deciding process could not hand over. Only the person who started the run or
+a tenant admin decides; viewers read. Schedules, batches, test series and published APIs never wait: their runs
+fail with `run.budget_exceeded` as before. Every request and decision is in the tenant's budget audit trail.
+
 ## Health checks
 
 `GET /api/health` needs no session. It answers 200 `{"status": "ok", "database": "ok"}` while the API process
@@ -446,6 +457,13 @@ not get the host's own daemon or socket. Options, from most to least isolated:
 - Docker-in-Docker in a privileged container on the server host, as in `compose/compose.yaml`; this isolates the
   sandbox's containers, images and network from the host's daemon, but a privileged container is not a security
   boundary against a kernel exploit.
+
+On a host with AppArmor (Ubuntu, Debian) the sandbox daemon must confine its containers with an enforcing profile:
+the server's self-test refuses unconfined containers there, and tool code does not run (Settings → Sandbox and
+`GET /api/sandbox/status` name the failed check). The stock `docker:dind` image starts its containers unconfined (it has
+no `apparmor_parser`, and its entrypoint sets `container=docker`, which makes containerd skip AppArmor);
+`compose/sandbox/Dockerfile` adds the parser and starts `dockerd` without that variable, so the daemon confines its
+containers with `docker-default`. A dedicated Docker VM with AppArmor does this by default.
 
 Optionally use a stronger runtime for the sandbox daemon (gVisor `runsc`, Kata Containers).
 
