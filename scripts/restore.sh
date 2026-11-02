@@ -4,7 +4,9 @@
 #   scripts/restore.sh backups/nodestro-20261031T120000Z.dump
 #
 # Stops the API and the worker, replaces the database's contents in one transaction (nothing changes if any step
-# fails), applies migrations if the dump is older than the image, and starts the API and the worker again.
+# fails) as the owner role nodestro_owner (database_migration_url; the restored objects belong to it), applies
+# migrations if the dump is older than the image (which also grants nodestro_app its privileges again), and starts the
+# API and the worker again.
 # Production: docs/RUNBOOK.md (the same steps against your own PostgreSQL).
 set -euo pipefail
 dump="${1:?usage: restore.sh DUMP}"
@@ -14,10 +16,10 @@ docker compose stop api worker
 # pg_restore of the server image: the same version as the pg_dump that wrote the backup (a dump of a newer pg_dump
 # cannot be read by an older pg_restore). The password goes to it in its environment, never on the command line.
 dir="$(cd "$(dirname "$dump")" && pwd)"
-docker compose run --rm --no-deps -T -v "$dir/$(basename "$dump"):/restore/backup.dump:ro" --entrypoint python api -I -c '
+docker compose run --rm --no-deps -T -v "$dir/$(basename "$dump"):/restore/backup.dump:ro" --entrypoint python migrate -I -c '
 import os
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
-with open("/run/secrets/database_url", encoding="utf-8") as file:
+with open("/run/secrets/database_migration_url", encoding="utf-8") as file:
     parts = conninfo_to_dict(file.read().strip())
 environment = dict(os.environ)
 password = parts.pop("password", None)

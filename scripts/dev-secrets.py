@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Write random secrets for the development compose file into compose/.secrets/ (once; existing files stay).
 
-Creates the PostgreSQL password, the database URL, the OpenID Connect client secret, the server's secret key, the
+Creates the PostgreSQL passwords (the superuser `nodestro`, the owner role `nodestro_owner` and the runtime role
+`nodestro_app`), the database URLs (`database_url`: nodestro_app, for the API and the worker; `database_migration_url`:
+nodestro_owner, for migrate, backups and restores), the OpenID Connect client secret, the server's secret key, the
 Dex environment (client secret and the passwords of the development users alice, bob and mallory) and users.json
 (the same passwords, for the end-to-end tests). The directory is readable only by its owner; the files inside are
 readable by the containers' users. Nothing here is meant for production.
+
+A directory from before the database roles (its `database_url` connects as the superuser `nodestro`) is updated:
+`database_url` is rewritten for nodestro_app; the superuser's password stays. The roles themselves are created by the
+compose file's db-roles service on the next `docker compose up`.
 """
 
 from __future__ import annotations
@@ -25,9 +31,9 @@ def main() -> int:
     os.chmod(root, 0o700)
     port = os.environ.get("NODESTRO_DB_PORT", "55433")
 
-    def write(name: str, value: str) -> None:
+    def write(name: str, value: str, *, replace: bool = False) -> None:
         path = root / name
-        if path.exists():
+        if path.exists() and not replace:
             return
         path.write_text(value, encoding="utf-8")
         os.chmod(path, 0o644)  # the containers' users (postgres, 10001) read their secret files
@@ -48,8 +54,25 @@ def main() -> int:
         if (root / "oidc_client_secret").exists()
         else secrets.token_urlsafe(32)
     )
+
+    def password(name: str) -> str:
+        path = root / name
+        return path.read_text().strip() if path.exists() else secrets.token_urlsafe(24)
+
+    owner_password, app_password = password("postgres_owner_password"), password("postgres_app_password")
+
+    def url(user: str, secret: str) -> str:
+        return f"host=localhost port={port} user={user} dbname=nodestro password={secret}\n"
+
+    old_url = (root / "database_url").read_text() if (root / "database_url").exists() else ""
+    superuser_url = " user=nodestro " in f" {old_url} "
     write("postgres_password", database_password + "\n")
-    write("database_url", f"host=localhost port={port} user=nodestro dbname=nodestro password={database_password}\n")
+    write("postgres_owner_password", owner_password + "\n")
+    write("postgres_app_password", app_password + "\n")
+    write("database_url", url("nodestro_app", app_password), replace=superuser_url)
+    write("database_migration_url", url("nodestro_owner", owner_password))
+    if superuser_url:
+        print("database_url now connects as nodestro_app (was the superuser nodestro)")
     write("oidc_client_secret", client_secret + "\n")
     write("secret_key", base64.b64encode(secrets.token_bytes(32)).decode() + "\n")
     write("users.json", json.dumps(users, indent=2) + "\n")
