@@ -4,9 +4,12 @@
 
 ### Axentra platform services, documented (2026-11-02)
 
+- `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`
+  and nodestro-api `bda8148` with the Axentra platform services, all off by default. The image (Python 3.13) now
+  contains the `axentra` package through `nodestro-runtime[postgres]`.
 - RUNBOOK section "Axentra platform services (optional, off by default)": the `NODESTRO_AXENTRA*`,
   `NODESTRO_SECRETS_FORMAT` and mirror switches, switching on with one backup, a role without `BYPASSRLS`, key rotation
-  with `nodestro-server secrets reencrypt`, `axentra reconcile`, and switching off. The development compose file has
+  with `nodestro-server secrets reencrypt`, `axentra reconcile`, the identity backend (`NODESTRO_IDENTITY_BACKEND`), and switching off. The development compose file has
   the variables commented out; nothing is switched on. TODO SRV-019 (staging run before any production use).
 
 ### Studio pin: macOS build fix (2026-11-02)

@@ -113,6 +113,7 @@ approved for production yet**; use them on a staging copy first.
 | `NODESTRO_SECRETS_FORMAT` | `axs1`: new tenant secrets use the keyring (rotation); default `v1` |
 | `NODESTRO_AXENTRA_AUDIT`, `NODESTRO_AXENTRA_USAGE` | `1`: mirror the approval/MCP audit trail and the AI usage ledger into Axentra, in the same transaction |
 | `NODESTRO_AXENTRA_CONFIG` | Optional Axentra TOML file for Axentra's own knobs |
+| `NODESTRO_IDENTITY_BACKEND` | `nodestro` (default), `mirror` (Nodestro answers, identity writes also go to Axentra in the same transaction) or `axentra` (Axentra answers, both are written). Needs `on` |
 
 Switching on:
 
@@ -126,6 +127,12 @@ Switching on:
    key only after `pending: 0` and `failed: []`. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
 4. Mirrors: after switching `NODESTRO_AXENTRA_AUDIT` / `_USAGE` on, `nodestro-server axentra reconcile --dry-run`
    counts what is missing (older records, a failed mirror) and `axentra reconcile` writes it (idempotent).
+5. Identity: `nodestro-server axentra backfill-identity --dry-run`, then without `--dry-run` (idempotent, one
+   transaction per record group); `axentra reconcile-identity` must print `"ok": true`. Then
+   `NODESTRO_IDENTITY_BACKEND=mirror`, restart; later `axentra`, restart (refused with `identity.backfill_required`
+   while records are missing on one side). Sessions are copied with their hash, so nobody logs in again. Accounts of
+   different identity providers are never merged by e-mail address. Back: `axentra` -> `mirror` -> `nodestro`, a
+   restart each; after time in `nodestro` mode run the backfill again before switching forward.
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
 the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.
