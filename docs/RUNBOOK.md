@@ -118,6 +118,8 @@ approved for production yet**; use them on a staging copy first.
 | `NODESTRO_AXENTRA_NOTIFY` | `1`: failed runs, pending tool approvals and budget decisions go to the members' in-app inbox (`/api/notifications`); never e-mail. Notifications need the identity backfill (linked users) |
 | `NODESTRO_AXENTRA_CONFIG` | Optional Axentra TOML file for Axentra's own knobs |
 | `NODESTRO_IDENTITY_BACKEND` | `nodestro` (default), `mirror` (Nodestro answers, identity writes also go to Axentra in the same transaction) or `axentra` (Axentra answers, both are written). Needs `on` |
+| `NODESTRO_FILES_BACKEND` | `volume` (default) or `axentra`: input file bytes in Axentra's storage (`[storage]` in `NODESTRO_AXENTRA_CONFIG`: local directory or S3). Needs `on` |
+| `NODESTRO_FILES_SOURCE_REMOVAL`, `NODESTRO_FILES_SOURCE_RETENTION_DAYS` | `1` allows `files remove-source` (default `0`); days a migrated volume file stays as the fallback (default 30) |
 
 Switching on:
 
@@ -142,6 +144,17 @@ Switching on:
    conflicting revision is refused with `identity.access_conflict`). Login starts are rate-limited per client
    address: behind the reverse proxy set `FORWARDED_ALLOW_IPS` to the proxy's address so the server sees client
    addresses. A tenant suspended in Axentra directly is closed too; resume it with `resume-tenant`.
+   restart each; after time in `nodestro` mode run the backfill again before switching forward.
+6. Input files: set `[storage]` in `NODESTRO_AXENTRA_CONFIG` (`backend = "local"` with an absolute `local_path` that
+   API and workers share, or `backend = "s3"` with the bucket) and `NODESTRO_FILES_BACKEND=axentra`; `check` must be
+   `ready`; restart. New uploads go to Axentra, older files are read from the data volume. Then
+   `nodestro-server files migrate --dry-run`, `files migrate` (resumable, idempotent, SHA-256 checked, never deletes
+   the volume file; exit code 2 when a file failed) and `files verify` (must print `"ok": true`; `pending` counts
+   files not copied yet, `orphans` lists stored objects without a reference). After the fallback period:
+   `NODESTRO_FILES_SOURCE_REMOVAL=1 nodestro-server files remove-source --dry-run`, then without `--dry-run` (only
+   verified files whose fallback period has passed). Keep the data volume shared between API and workers until then.
+   Back: `files export-volume` (copies the files that exist only in Axentra back to the volume), then
+   `NODESTRO_FILES_BACKEND=volume` and restart. Details: `docs/AXENTRA.md` in nodestro-runtime, section "Files".
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
 the `axs1` format need the keyring. `check`, `api` and `worker` refuse to start (`profile.invalid`) with
@@ -372,6 +385,12 @@ Back up two things together: the database and the data volume (`NODESTRO_DATA_DI
 nodestro-server backup /backups          # pg_dump, custom format: /backups/nodestro-<time>.dump
 tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
 ```
+
+With `NODESTRO_FILES_BACKEND=axentra` input file bytes live in Axentra's storage. On the local backend `backup` also
+writes `/backups/nodestro-files-<time>.tar.gz` of `storage.local_path` (after the dump; uploads in progress left
+out). On S3, back up the bucket with its own versioning or replication. To restore, restore the dump, the data volume
+and the storage archive (or the bucket) of the same time, then run `nodestro-server files verify`: it must print
+`"ok": true` (a file deleted between the dump and the archive is reported as `input.content_missing`).
 
 `backup` passes the database password to `pg_dump` in its environment, never on the command line. Keep backups
 encrypted and off the server; they contain the tenants' data (their provider keys stay encrypted with

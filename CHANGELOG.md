@@ -10,6 +10,12 @@
 - RUNBOOK: metrics endpoint (`NODESTRO_METRICS_TOKEN`) with alerts, `axentra status`, the new switches
   `NODESTRO_AXENTRA_RUN_USAGE` and `NODESTRO_AXENTRA_NOTIFY`, and the start check and way back for `axs1` secrets
   (takes effect with the next runtime/api pin).
+### Input files in Axentra's storage, documented (M8, 2026-11-02; off by default)
+
+- RUNBOOK: `NODESTRO_FILES_BACKEND`, `NODESTRO_FILES_SOURCE_REMOVAL`, `NODESTRO_FILES_SOURCE_RETENTION_DAYS`, the
+  `files migrate|verify|remove-source|export-volume` procedure (step 6 of switching on) and backups of Axentra's
+  local storage directory or S3 bucket with `files verify` after a restore. Needs the nodestro-runtime/api pins
+  with M8; nothing is switched on.
 
 ### Axentra platform services, documented (2026-11-02)
 
