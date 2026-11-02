@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Python 3.11 minimum (2026-11-02)
+
+- Python 3.11 is now the minimum (3.10 reached end of life in October 2026): ruff `target-version = "py311"`; the image
+  already runs 3.13.
+- `studio.json` pins studio `6351ad3` (before: `f79c11d`; the merge commit of studio #103): orkexa `dec66eb`,
+  nodestro-runtime `51262a2`, nodestro-api `ef04cb4`, nodestro-examples `3f91300`, nodestro-integrations `6e0c9e6`,
+  all with Python 3.11 as the minimum; axentra stays `024da57`.
+
+### Pins: Axentra migration completion and security review fixes (2026-11-02)
+
+- `studio.json` pins studio `f79c11d` (before: `d2724c2`; the merge commit of studio #102, which contains d2724c2): axentra `024da57`,
+  orkexa `3364fb8`, nodestro-runtime `0369132`, nodestro-api `3e0a874`, nodestro-examples `b7a1d65`,
+  nodestro-integrations `0de02d0`. The security review fixes below take effect with this pin.
+- SRV-020 is closed (fixed in nodestro-api `df97118`: an empty archive while nothing is stored). Its acceptance test now
+  checks the other side: with files recorded, a missing storage directory makes `backup` fail instead of writing an
+  empty archive.
+
+### Security review fixes, documented
+
+- Members: an e-mail address no longer names a user by itself in `set-role`, `remove-member` and `revoke-sessions`
+  (SR-10): on a terminal the command shows the user with their identity and asks for the user id; otherwise it stops
+  with `identity.user_confirm`. The acceptance tests pass user ids.
+- Key rotation (step 3): `secrets reencrypt` also re-encrypts Axentra's own columns; the start checks their key ids
+  and that each key decrypts stored values (SR-04, SR-05).
+- Input files (step 6): `files verify` fails on leftovers (`orphans`, `unreferenced`), `files cleanup` removes them;
+  run it after switching back from `volume` (SR-09). The volume catalog is locked across processes (SR-08).
+- Backups: an empty storage archive before the first upload; a clear error when `pg_dump` runs without the owner
+  role. A duplicated sentence in the backup paragraph is gone.
+
 ### Run budget decisions (BUDGET-1, 2026-11-02)
 
 - `studio.json` pins studio `d2724c2` (the merge commit of studio #101, with BUDGET-1 from studio #97 and the server
