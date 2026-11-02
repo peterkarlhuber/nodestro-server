@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Docker-first follow-up (2026-11-02)
+
+- `studio.json` pins studio `139bce3` (before: `6351ad3`; the merge commit of studio #105): nodestro-runtime `958be1d`
+  (source builds of Python libraries are refused on the server, R-1: plans use wheels only; container shape checks,
+  R-5; MCP container deadline 15 minutes; tool adoption, which the server refuses with `tool.adoption_desktop_only`),
+  nodestro-api `b8139b0`, nodestro-examples `8c338d3`, nodestro-integrations `e71bf55`; orkexa stays `dec66eb`.
+
 ### Python 3.11 minimum (2026-11-02)
 
 - Python 3.11 is now the minimum (3.10 reached end of life in October 2026): ruff `target-version = "py311"`; the image
