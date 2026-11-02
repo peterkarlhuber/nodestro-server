@@ -263,7 +263,37 @@ def _sandbox_containers(since: float, *, host: bool = False) -> list[str]:
     return [name for name in output.split() if name.startswith("nodestro-sandbox-")]
 
 
+def _sandbox_approved(browser: Browser, timeout: float = 900) -> None:
+    """Wait until the API's Docker monitor has passed the preflight and the in-container self-test.
+
+    A fresh sandbox daemon first builds the sandbox image and runs the self-test in the background; until then the
+    state is ``checking`` and tool code is refused with ``docker-checking`` (nothing runs without that proof)."""
+
+    def approved() -> dict[str, Any] | None:
+        answer = browser.get("/api/sandbox/status", params={"wait": 5}, timeout=60)
+        assert answer.status_code == 200, answer.text
+        body = dict(answer.json())
+        assert body.get("state") in ("checking", "approved"), body  # the sandbox daemon must not be refused
+        return body if body["state"] == "approved" else None
+
+    wait_for(approved, timeout=timeout, every=1, what="the Docker sandbox check of the API")
+
+
+def _finished_in_sandbox(browser: Browser, workflow_id: str, timeout: float = 900) -> dict[str, Any]:
+    """A run of ``workflow_id``, started again while the worker's own Docker check is still running.
+
+    Every process proves the daemon itself; a worker's check starts with its first job, so a tool call in a run can be
+    refused with ``docker-checking`` for a while after the worker started. Any other result is returned as it is."""
+    deadline = time.monotonic() + timeout
+    while True:
+        run = _finished(browser, _start(browser, workflow_id))
+        if "docker-checking" not in json.dumps(run) or time.monotonic() > deadline:
+            return run
+        time.sleep(10)
+
+
 def _save_tool(browser: Browser) -> None:
+    _sandbox_approved(browser)
     saved = browser.post("/api/tools", json={"function_name": "shout", "code": TOOL, "tests": TOOL_TESTS}, timeout=900)
     assert saved.status_code in (200, 201), saved.text
     assert saved.json()["tool"] is not None, saved.text  # its tests passed (in the sandbox)
@@ -279,7 +309,7 @@ def test_tool_code_runs_only_in_a_container_of_the_sandbox_daemon(tenants: Tenan
     # In a run, executed by a worker: the agent (the model stub) calls the tool.
     _use_the_stub(alice)
     prompt = f"CALL shout {json.dumps({'text': 'in a run'})}"
-    run = _finished(alice, _start(alice, _workflow(alice, _flow("Tool run", prompt, tools=["shout"]))))
+    run = _finished_in_sandbox(alice, _workflow(alice, _flow("Tool run", prompt, tools=["shout"])))
     assert run["status"] == "succeeded", run
     assert run["output"] == "tool said: IN A RUN!", run
     # Tests, the direct call and the run each started containers on the sandbox daemon, none on the host's.
@@ -306,6 +336,7 @@ def test_without_the_sandbox_daemon_tool_code_does_not_run_at_all(tenants: Tenan
     finally:
         compose("start", "sandbox")
         wait_healthy("sandbox")
+        _sandbox_approved(alice)  # the restarted daemon is proven again before later tests run tool code
 
 
 # ---- workers ------------------------------------------------------------------------------------

@@ -9,6 +9,9 @@
 - RUNBOOK: section "Run budget decisions" and the operator cap `NODESTRO_MAX_RUN_BUDGET_USD`.
 - New end-to-end test: a run in the worker pauses for a budget decision, a raise in the API process continues it in
   a worker, the request is sent once, another tenant sees nothing.
+- Sandbox e2e tests wait for the Docker check: the API's monitor must report `approved` (`GET /api/sandbox/status`)
+  before a tool is saved and after the sandbox daemon is restarted; a run refused with `docker-checking` while the
+  worker's own check still runs is started again. Since the start-up preflight, the self-test runs in the background.
 
 ### Every Axentra switch on, end to end (development stack only)
 
