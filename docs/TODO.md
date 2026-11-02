@@ -87,9 +87,12 @@ The image definition here is shared with nodestro-local-docker by design; see it
   `docs/AXENTRA.md` and RT-030
 - **What:** The server can open Axentra (off by default): keyring secrets with rotation, tenant links, audit and
   usage mirrors. It is tested against PostgreSQL in the component repositories, not yet on a staging server with a
-  copy of real data, a non-superuser role and a restore drill.
-- **Next step:** On a staging copy: dedicated role without `BYPASSRLS`, `migrate --backup-dir`, `secrets reencrypt`,
-  `axentra reconcile`, then restore the backup and compare. No switch is approved for production.
+  copy of real data and a restore drill. Done: separate database roles (`nodestro_owner` migrates and backs up,
+  `nodestro_app` serves; RUNBOOK "Database roles"; the development stack uses them, an older stack is moved over by
+  its `db-roles` service); Axentra shares the process's connection pool.
+- **Next step:** On a staging copy: move it to the separate roles (RUNBOOK), `migrate --backup-dir`, `db roles`,
+  `secrets reencrypt`, `axentra reconcile`, then restore the backup as the owner and compare. No switch is approved
+  for production.
 - **Depends on:** nodestro-runtime RT-030 (identity, independent security review)
 
 ## Performance

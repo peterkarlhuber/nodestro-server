@@ -16,6 +16,20 @@
   `files migrate|verify|remove-source|export-volume` procedure (step 6 of switching on) and backups of Axentra's
   local storage directory or S3 bucket with `files verify` after a restore. Needs the nodestro-runtime/api pins
   with M8; nothing is switched on.
+### Separate database roles (dbinfra)
+
+- The development stack no longer runs the server as the superuser: the new one-shot `db-roles` service
+  (`compose/postgres/roles.sql`, idempotent, on every start) creates `nodestro_owner` (owns the tables, `BYPASSRLS`
+  for `pg_dump`; used by `migrate`, backups and `scripts/restore.sh` through the new `database_migration_url` secret)
+  and `nodestro_app` (API and worker: no superuser, no `BYPASSRLS`, owns nothing). A stack created before is moved
+  over: the tables the superuser owned go to `nodestro_owner`, and `scripts/dev-secrets.py` rewrites a `database_url`
+  that names the superuser. `NODESTRO_AXENTRA_ALLOW_SUPERUSER` is gone from the compose file.
+- RUNBOOK: new section "Database roles" (attributes and why, `roles.sql` or the statements by hand,
+  `nodestro-server db roles` and `db grant-runtime-role`, moving an existing installation), the
+  `NODESTRO_DATABASE_MIGRATION_URL` setting, backup and restore as the owner role, `max_connections` with Axentra on
+  (one pool per process). TODO SRV-019 updated.
+- Needs a `studio.json` pin with nodestro-runtime and nodestro-api of the same change (`NODESTRO_DATABASE_MIGRATION_URL`,
+  the role checks); with an older image, `migrate` would run as `nodestro_app` and fail.
 
 ### Axentra platform services, documented (2026-11-02)
 
