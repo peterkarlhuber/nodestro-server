@@ -31,5 +31,12 @@ cleanup() {
 }
 trap cleanup EXIT
 docker compose up -d --wait --wait-timeout 600 postgres dex sandbox model-stub
+# How the sandbox daemon confines its containers (the self-test refuses unconfined ones on an AppArmor host).
+docker compose exec -T sandbox sh -c '
+  echo "container=${container:-}"; ls -l /sbin/apparmor_parser /usr/sbin/apparmor_parser 2>&1
+  mountpoint /sys/kernel/security; ls /sys/kernel/security 2>&1; cat /sys/module/apparmor/parameters/enabled 2>&1
+  cat /proc/self/attr/current 2>&1; grep -c docker-default /sys/kernel/security/apparmor/profiles 2>&1
+  docker info --format "{{json .SecurityOptions}}"
+  docker run --rm alpine:3.22 cat /proc/self/attr/current 2>&1' || true
 docker compose up -d --wait --wait-timeout 600 api worker
 NODESTRO_E2E=1 python3 -m pytest -p no:cacheprovider tests/e2e "$@"
