@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Pins: Axentra completion (2026-11-02)
+
+- `studio.json` pins studio `1db50b8` (before: `32ca327`; the merge commit of studio #94): axentra `f6ae01d`,
+  nodestro-runtime `95114ae`, nodestro-api `961afef`, nodestro-examples `9cdc1f5`, nodestro-integrations `8ecfb00`.
+  The RUNBOOK entries below that waited for "the next runtime/api pins" take effect with this pin.
+
 ### Identity completion, documented
 
 - RUNBOOK: `suspend-tenant` / `resume-tenant`; in `axentra` identity mode Axentra runs the login and decides
