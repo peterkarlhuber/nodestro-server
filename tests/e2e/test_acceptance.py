@@ -260,7 +260,9 @@ def _sandbox_containers(since: float, *, host: bool = False) -> list[str]:
         output = subprocess.run(events, capture_output=True, text=True, check=True, timeout=60).stdout
     else:
         output = compose("exec", "-T", "sandbox", *events).stdout
-    return [name for name in output.split() if name.startswith("nodestro-sandbox-")]
+    # Tool code runs in Orkexa's containers (``orkexa-sandbox-*``) since the runtime uses Orkexa's run shape;
+    # ``nodestro-sandbox-*`` are the runtime's own (dependency checks). Self-test containers are not counted.
+    return [name for name in output.split() if name.startswith(("orkexa-sandbox-", "nodestro-sandbox-"))]
 
 
 def _sandbox_approved(browser: Browser, timeout: float = 900) -> None:
