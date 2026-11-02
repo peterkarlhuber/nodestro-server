@@ -28,10 +28,10 @@ x-server: &server
     # NODESTRO_BEDROCK_TENANT_ROLES_FILE: /run/secrets/bedrock_tenant_roles  # {"<tenant_id>": {"role_arn": "…", "external_id": "…"}}
     # NODESTRO_BEDROCK_DATA_RESIDENCY: eu_only
     # NODESTRO_BEDROCK_ALLOWED_REGIONS: eu-central-1,eu-west-1
-    # Axentra platform services (docs/RUNBOOK.md): off unless switched on. The development database role is a superuser.
+    # Axentra platform services (docs/RUNBOOK.md): off unless switched on. The API and the worker connect as
+    # nodestro_app (no superuser, no BYPASSRLS, owns nothing), so Axentra's row-level security applies to them.
     # NODESTRO_AXENTRA: "on"
     # NODESTRO_AXENTRA_KEYRING_FILE: /run/secrets/axentra_keyring  # k1:<base64 32 bytes>
-    # NODESTRO_AXENTRA_ALLOW_SUPERUSER: "1"
     # NODESTRO_AXENTRA_AUDIT: "1"
     # NODESTRO_AXENTRA_USAGE: "1"
     # NODESTRO_IDENTITY_BACKEND: mirror  # after `nodestro-server axentra backfill-identity`
@@ -46,6 +46,9 @@ x-server: &server
     - sandbox-certs:/run/sandbox-certs:ro
 
 services:
+  # The superuser `nodestro` administers the database only; no server process uses it (docs/RUNBOOK.md, "Database
+  # roles"). The server's roles nodestro_owner (owns the tables: migrate, backup, restore) and nodestro_app (the API
+  # and the worker) are created by the db-roles service.
   postgres:
     image: postgres:17
     restart: unless-stopped
@@ -108,13 +111,37 @@ services:
       timeout: 5s
       retries: 30
 
-  # Applies the database migrations, then exits. A database with tables is backed up first (pg_dump).
+  # Creates or updates the roles nodestro_owner and nodestro_app (compose/postgres/roles.sql, idempotent), then exits.
+  # Runs on every start, so a database created before these roles is moved over too: the tables the superuser owned
+  # are given to nodestro_owner.
+  db-roles:
+    image: postgres:17
+    restart: "no"
+    entrypoint: ["/etc/nodestro/roles.sh"]
+    environment:
+      PGHOST: postgres
+      POSTGRES_USER: nodestro
+      POSTGRES_DB: nodestro
+    secrets: [postgres_password, postgres_owner_password, postgres_app_password]
+    volumes:
+      - ./postgres/roles.sh:/etc/nodestro/roles.sh:ro
+      - ./postgres/roles.sql:/etc/nodestro/roles.sql:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  # Applies the database migrations as nodestro_owner, grants nodestro_app its privileges, then exits. A database with
+  # tables is backed up first (pg_dump). Also the service for the owner's commands (docs/RUNBOOK.md):
+  #   docker compose run --rm --no-deps migrate db roles
   migrate:
     <<: *server
     restart: "no"
     command: ["migrate", "--backup-dir", "/var/lib/nodestro/backups"]
+    environment:
+      <<: *server-environment
+      NODESTRO_DATABASE_MIGRATION_URL_FILE: /run/secrets/database_migration_url
+    secrets: [database_url, database_migration_url, oidc_client_secret, secret_key]
     depends_on:
-      postgres: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
 
   api:
     <<: *server
@@ -143,7 +170,10 @@ services:
 
 secrets:
   postgres_password: {file: .secrets/postgres_password}
-  database_url: {file: .secrets/database_url}
+  postgres_owner_password: {file: .secrets/postgres_owner_password}
+  postgres_app_password: {file: .secrets/postgres_app_password}
+  database_url: {file: .secrets/database_url}  # nodestro_app: the API and the worker
+  database_migration_url: {file: .secrets/database_migration_url}  # nodestro_owner: migrate, backup, restore
   oidc_client_secret: {file: .secrets/oidc_client_secret}
   secret_key: {file: .secrets/secret_key}
 

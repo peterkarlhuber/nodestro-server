@@ -25,14 +25,17 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
    registry.example.com/nodestro-server:<version>`. `studio.json` names the studio commit; it pins every
    component by full commit SHA. The component repositories are public; a token in `NODESTRO_READ` is optional and
    reaches the build only as a BuildKit secret.
-2. Create the database and a role that owns it:
-   `CREATE ROLE nodestro LOGIN PASSWORD '…'; CREATE DATABASE nodestro OWNER nodestro;`
+2. Create the database and two roles (see [Database roles](#database-roles)): `nodestro_owner` owns the tables and
+   runs `migrate`, backups and restores; `nodestro_app` is the API's and the workers' role. As a superuser, connected
+   to the new database: `psql -d nodestro -v owner_password=… -v app_password=… -f compose/postgres/roles.sql` after
+   `CREATE DATABASE nodestro;` (or the statements in [Database roles](#database-roles) by hand).
 3. Register a client at your identity provider: confidential client, authorization code flow with PKCE (S256),
    redirect URI `https://<studio host>/api/auth/callback`, scopes `openid email profile`.
 4. Generate the server's secret key once and keep it with your other secrets: `openssl rand -base64 32`.
    It encrypts the tenants' provider keys. Without it they cannot be read; there is no rotation yet.
 5. Prepare the sandbox host (see [The sandbox daemon](#the-sandbox-daemon)).
-6. Run `nodestro-server migrate`, then start the API and the workers, then the proxy.
+6. Run `nodestro-server migrate` with `NODESTRO_DATABASE_MIGRATION_URL` (the owner) and `NODESTRO_DATABASE_URL`
+   (the runtime role) set, then start the API and the workers (only `NODESTRO_DATABASE_URL`), then the proxy.
 7. Create the first tenant and its owner:
    `nodestro-server create-tenant acme "Acme Inc."` and `nodestro-server setup-link acme`. The link is valid for
    24 hours and once; whoever logs in with it becomes the tenant's first owner.
@@ -64,7 +67,8 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | Variable | Meaning |
 | --- | --- |
 | `NODESTRO_PROFILE` | `server` (set in the image) |
-| `NODESTRO_DATABASE_URL` / `_FILE` | PostgreSQL connection (`host=… port=… user=… dbname=… password=…` or a URL) |
+| `NODESTRO_DATABASE_URL` / `_FILE` | PostgreSQL connection (`host=… port=… user=… dbname=… password=…` or a URL) of the runtime role (`nodestro_app`) |
+| `NODESTRO_DATABASE_MIGRATION_URL` / `_FILE` | The owner role's connection (`nodestro_owner`), for `migrate`, `backup`, `db grant-runtime-role` and restores only; never give it to the API or the workers. Unset: those commands use `NODESTRO_DATABASE_URL` (one role for everything, as before) |
 | `NODESTRO_PUBLIC_ORIGIN` | `https://studio.example.com` as browsers see it (`http://` only for localhost) |
 | `NODESTRO_OIDC_ISSUER` | The provider's issuer URL (https; `http://` only for localhost) |
 | `NODESTRO_OIDC_CLIENT_ID` | The client registered for the studio |
@@ -94,7 +98,8 @@ the operator assigns each tenant an IAM role (next section).
 
 PostgreSQL's `max_connections` must cover every process: (`NODESTRO_DATABASE_POOL_SIZE` + 1 connection for locks)
 × the number of API and worker processes, plus a few for operator commands such as `migrate` and `backup`. With the
-defaults, one API and two workers need up to 27 connections. Every connection is checked before it is used, so a
+defaults, one API and two workers need up to 27 connections. With `NODESTRO_AXENTRA=on` the numbers stay the same:
+Axentra uses the process's pool and opens none of its own (one pool per process; nodestro-runtime `docs/AXENTRA.md`). Every connection is checked before it is used, so a
 connection the database dropped (a restart, a failover, a proxy's idle timeout) is replaced without restarting the
 API or the workers.
 
@@ -120,8 +125,10 @@ Switching on:
 1. Take a backup, then `nodestro-server migrate --backup-dir DIR` (applies Nodestro's and Axentra's migrations
    after one `pg_dump`). `nodestro-server axentra status` shows the switches and pending migrations; `check`, `api`
    and `worker` refuse to start while either schema is behind.
-2. Production: a database role without `SUPERUSER` and `BYPASSRLS` that owns the tables (the development compose file
-   uses the superuser `nodestro`, hence `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` there).
+2. The database roles of [Database roles](#database-roles): the API and the workers connect as a role without
+   `SUPERUSER` and `BYPASSRLS` that owns no tables, or `check`, `api` and `worker` stop with `storage.role_unsafe`.
+   `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` lifts this for a throwaway development database only. The development
+   compose file uses separate roles already.
 3. Key rotation: put the new key first in the keyring, restart, run `nodestro-server secrets reencrypt --dry-run`, then
    `secrets reencrypt` (resumable; an unreadable value is reported and never overwritten, exit code 2). Remove an old
    key only after `pending: 0` and `failed: []`. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
@@ -136,6 +143,63 @@ Switching on:
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
 the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.
+
+## Database roles
+
+The server uses two database roles, and the superuser only to create them:
+
+| Role | Used by | Attributes |
+| --- | --- | --- |
+| `nodestro_owner` | `migrate`, `backup`, `db grant-runtime-role`, restores (`NODESTRO_DATABASE_MIGRATION_URL`) | `LOGIN NOSUPERUSER BYPASSRLS`; owns the tables (Nodestro's and Axentra's) and may create objects in the schema |
+| `nodestro_app` | `api`, `worker`, `check` and the other commands (`NODESTRO_DATABASE_URL`) | `LOGIN NOSUPERUSER NOBYPASSRLS`; owns nothing; reads and writes rows, no DDL |
+
+Why: row-level security does not apply to superusers and roles with `BYPASSRLS`, and a table's owner can switch it off.
+Axentra's tables force row-level security per tenant; it is defense in depth only when the server's role is none of
+these. The owner needs `BYPASSRLS` for one reason: `pg_dump` must read every row of those tables (without it the
+backup stops with an error rather than writing an incomplete dump).
+
+`compose/postgres/roles.sql` creates or updates both roles (idempotent; run it as a superuser in the server's
+database with the psql variables `owner_password` and `app_password`). By hand:
+
+```sql
+CREATE ROLE nodestro_owner LOGIN NOSUPERUSER BYPASSRLS PASSWORD '…';
+CREATE ROLE nodestro_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '…';
+GRANT CONNECT, TEMPORARY ON DATABASE nodestro TO nodestro_owner, nodestro_app;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE, CREATE ON SCHEMA public TO nodestro_owner;
+GRANT USAGE ON SCHEMA public TO nodestro_app;
+```
+
+With `NODESTRO_DATABASE_SCHEMA`, create that schema `AUTHORIZATION nodestro_owner` instead of granting on `public`.
+
+`nodestro-server migrate` connects as the owner. Before it changes anything it checks the runtime role (the user of
+`NODESTRO_DATABASE_URL`) and refuses with `storage.role_unsafe` when it is a superuser, has `BYPASSRLS` or owns
+tables; afterwards it grants the runtime role `SELECT, INSERT, UPDATE, DELETE` on every table, `USAGE, SELECT` on the
+sequences and `EXECUTE` on the functions of the schema, now and for later tables (default privileges). It cannot
+write the schema-version tables. Two commands for operators (both as the owner):
+
+| Command | What it does |
+| --- | --- |
+| `nodestro-server db roles` | Prints both roles as JSON: superuser, `BYPASSRLS`, owned tables, whether the owner can back up. Exit code 3 when the runtime role is not restricted |
+| `nodestro-server db grant-runtime-role [ROLE]` | Grants the runtime role (default: the user of `NODESTRO_DATABASE_URL`) its privileges again, for example after a restore with `--no-acl`. Refused (`storage.role_unsafe`) for an unsafe role; needs `NODESTRO_DATABASE_MIGRATION_URL` |
+
+In the development stack: `docker compose -f compose/compose.yaml run --rm --no-deps migrate db roles`.
+
+Moving an existing installation (one role that owns the tables, or a superuser) to separate roles:
+
+1. Take a backup (`nodestro-server backup`).
+2. As a superuser, run `compose/postgres/roles.sql` in the server's database. It creates the roles and gives the
+   owner role the tables, views, sequences, functions and types of the `public` schema that the connecting role owns
+   (nothing is dropped or rewritten). When the tables belong to another role than the one connecting, transfer them
+   instead with `REASSIGN OWNED BY <old owner> TO nodestro_owner;` (every schema of the database, and the database
+   itself; not possible for the cluster's bootstrap superuser, which `roles.sql` covers).
+3. Set `NODESTRO_DATABASE_MIGRATION_URL` (owner) for `migrate` and `backup`, `NODESTRO_DATABASE_URL` (runtime role)
+   everywhere, and remove `NODESTRO_AXENTRA_ALLOW_SUPERUSER`.
+4. Run `nodestro-server migrate` (grants the runtime role), then `nodestro-server db roles` (exit code 0), then start
+   the API and the workers.
+
+The development stack does this by itself: its `db-roles` service runs `roles.sql` on every start, and
+`scripts/dev-secrets.py` rewrites a `database_url` that still names the superuser `nodestro`.
 
 ## Amazon Bedrock for tenants
 
@@ -329,21 +393,24 @@ nodestro-server backup /backups          # pg_dump, custom format: /backups/node
 tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
 ```
 
-`backup` passes the database password to `pg_dump` in its environment, never on the command line. Keep backups
+`backup` runs as the owner role (`NODESTRO_DATABASE_MIGRATION_URL`; it needs `BYPASSRLS` to read Axentra's tables, see
+[Database roles](#database-roles)); with `NODESTRO_DATABASE_SCHEMA` it dumps only that schema. It passes the database
+password to `pg_dump` in its environment, never on the command line. Keep backups
 encrypted and off the server; they contain the tenants' data (their provider keys stay encrypted with
 `NODESTRO_SECRET_KEY`, which you keep separately).
 
 To restore:
 
 1. Stop the API and all workers.
-2. Restore the database in one transaction:
+2. Restore the database in one transaction, connected as the owner role (the restored objects belong to the role
+   that restores them; never restore as the runtime role):
    `pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error -d <database> <dump>`, with the
    image's `pg_restore` (version 17, like its `pg_dump`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
 3. Restore the data volume from the archive of the same time.
-4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first), then start the API and the
-   workers.
+4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first; the runtime role is granted its
+   privileges again), then start the API and the workers. Into a new database server: create the roles first.
 
 `scripts/restore.sh DUMP` does steps 1, 2 and 4 for the development stack; the end-to-end tests restore a backup
 this way.
