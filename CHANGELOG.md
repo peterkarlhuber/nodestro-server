@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Pins: Axentra completion (2026-11-02)
+
+- `studio.json` pins studio `1db50b8` (before: `32ca327`; the merge commit of studio #94): axentra `f6ae01d`,
+  nodestro-runtime `95114ae`, nodestro-api `961afef`, nodestro-examples `9cdc1f5`, nodestro-integrations `8ecfb00`.
+  The RUNBOOK entries below that waited for "the next runtime/api pins" take effect with this pin.
+
+### Identity completion, documented
+
+- RUNBOOK: `suspend-tenant` / `resume-tenant`; in `axentra` identity mode Axentra runs the login and decides
+  permissions from versioned role definitions; `FORWARDED_ALLOW_IPS` behind the proxy (login start rate limit).
+  Needs the next nodestro-api/runtime pins.
+- RUNBOOK: metrics endpoint (`NODESTRO_METRICS_TOKEN`) with alerts, `axentra status`, the new switches
+  `NODESTRO_AXENTRA_RUN_USAGE` and `NODESTRO_AXENTRA_NOTIFY`, and the start check and way back for `axs1` secrets
+  (takes effect with the next runtime/api pin).
+### Input files in Axentra's storage, documented (M8, 2026-11-02; off by default)
+
+- RUNBOOK: `NODESTRO_FILES_BACKEND`, `NODESTRO_FILES_SOURCE_REMOVAL`, `NODESTRO_FILES_SOURCE_RETENTION_DAYS`, the
+  `files migrate|verify|remove-source|export-volume` procedure (step 6 of switching on) and backups of Axentra's
+  local storage directory or S3 bucket with `files verify` after a restore. Needs the nodestro-runtime/api pins
+  with M8; nothing is switched on.
+### Separate database roles (dbinfra)
+
+- The development stack no longer runs the server as the superuser: the new one-shot `db-roles` service
+  (`compose/postgres/roles.sql`, idempotent, on every start) creates `nodestro_owner` (owns the tables, `BYPASSRLS`
+  for `pg_dump`; used by `migrate`, backups and `scripts/restore.sh` through the new `database_migration_url` secret)
+  and `nodestro_app` (API and worker: no superuser, no `BYPASSRLS`, owns nothing). A stack created before is moved
+  over: the tables the superuser owned go to `nodestro_owner`, and `scripts/dev-secrets.py` rewrites a `database_url`
+  that names the superuser. `NODESTRO_AXENTRA_ALLOW_SUPERUSER` is gone from the compose file.
+- RUNBOOK: new section "Database roles" (attributes and why, `roles.sql` or the statements by hand,
+  `nodestro-server db roles` and `db grant-runtime-role`, moving an existing installation), the
+  `NODESTRO_DATABASE_MIGRATION_URL` setting, backup and restore as the owner role, `max_connections` with Axentra on
+  (one pool per process). TODO SRV-019 updated.
+- Needs a `studio.json` pin with nodestro-runtime and nodestro-api of the same change (`NODESTRO_DATABASE_MIGRATION_URL`,
+  the role checks); with an older image, `migrate` would run as `nodestro_app` and fail.
+
 ### Axentra platform services, documented (2026-11-02)
 
 - `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`

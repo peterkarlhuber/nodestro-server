@@ -25,14 +25,17 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
    registry.example.com/nodestro-server:<version>`. `studio.json` names the studio commit; it pins every
    component by full commit SHA. The component repositories are public; a token in `NODESTRO_READ` is optional and
    reaches the build only as a BuildKit secret.
-2. Create the database and a role that owns it:
-   `CREATE ROLE nodestro LOGIN PASSWORD '…'; CREATE DATABASE nodestro OWNER nodestro;`
+2. Create the database and two roles (see [Database roles](#database-roles)): `nodestro_owner` owns the tables and
+   runs `migrate`, backups and restores; `nodestro_app` is the API's and the workers' role. As a superuser, connected
+   to the new database: `psql -d nodestro -v owner_password=… -v app_password=… -f compose/postgres/roles.sql` after
+   `CREATE DATABASE nodestro;` (or the statements in [Database roles](#database-roles) by hand).
 3. Register a client at your identity provider: confidential client, authorization code flow with PKCE (S256),
    redirect URI `https://<studio host>/api/auth/callback`, scopes `openid email profile`.
 4. Generate the server's secret key once and keep it with your other secrets: `openssl rand -base64 32`.
    It encrypts the tenants' provider keys. Without it they cannot be read; there is no rotation yet.
 5. Prepare the sandbox host (see [The sandbox daemon](#the-sandbox-daemon)).
-6. Run `nodestro-server migrate`, then start the API and the workers, then the proxy.
+6. Run `nodestro-server migrate` with `NODESTRO_DATABASE_MIGRATION_URL` (the owner) and `NODESTRO_DATABASE_URL`
+   (the runtime role) set, then start the API and the workers (only `NODESTRO_DATABASE_URL`), then the proxy.
 7. Create the first tenant and its owner:
    `nodestro-server create-tenant acme "Acme Inc."` and `nodestro-server setup-link acme`. The link is valid for
    24 hours and once; whoever logs in with it becomes the tenant's first owner.
@@ -51,6 +54,8 @@ The person must have logged in once, so that the server knows them.
 | `nodestro-server set-role TENANT USER ROLE` | Adds the person to the tenant or changes their role (`owner`, `admin`, `editor`, `operator`, `viewer`); takes effect with their next request |
 | `nodestro-server remove-member TENANT USER` | Removes the person from the tenant and ends their sessions there |
 | `nodestro-server revoke-sessions USER` | Ends every session of the person in every tenant (logs them out everywhere; memberships stay) |
+| `nodestro-server suspend-tenant TENANT` | Closes the tenant at once: its sessions, logins, switches to it and setup links are refused (`identity.tenant_suspended`), workers neither start nor continue its runs and fire none of its schedules. Nothing is deleted |
+| `nodestro-server resume-tenant TENANT` | Opens a suspended tenant again; sessions that did not expire meanwhile work again, interrupted runs can be continued |
 
 Errors: `identity.user_unknown` (nobody with that name has logged in yet), `identity.user_ambiguous` (the e-mail
 address names several users; use the user id), `identity.tenant_unknown`, `identity.not_a_member` and
@@ -64,7 +69,8 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | Variable | Meaning |
 | --- | --- |
 | `NODESTRO_PROFILE` | `server` (set in the image) |
-| `NODESTRO_DATABASE_URL` / `_FILE` | PostgreSQL connection (`host=… port=… user=… dbname=… password=…` or a URL) |
+| `NODESTRO_DATABASE_URL` / `_FILE` | PostgreSQL connection (`host=… port=… user=… dbname=… password=…` or a URL) of the runtime role (`nodestro_app`) |
+| `NODESTRO_DATABASE_MIGRATION_URL` / `_FILE` | The owner role's connection (`nodestro_owner`), for `migrate`, `backup`, `db grant-runtime-role` and restores only; never give it to the API or the workers. Unset: those commands use `NODESTRO_DATABASE_URL` (one role for everything, as before) |
 | `NODESTRO_PUBLIC_ORIGIN` | `https://studio.example.com` as browsers see it (`http://` only for localhost) |
 | `NODESTRO_OIDC_ISSUER` | The provider's issuer URL (https; `http://` only for localhost) |
 | `NODESTRO_OIDC_CLIENT_ID` | The client registered for the studio |
@@ -94,7 +100,8 @@ the operator assigns each tenant an IAM role (next section).
 
 PostgreSQL's `max_connections` must cover every process: (`NODESTRO_DATABASE_POOL_SIZE` + 1 connection for locks)
 × the number of API and worker processes, plus a few for operator commands such as `migrate` and `backup`. With the
-defaults, one API and two workers need up to 27 connections. Every connection is checked before it is used, so a
+defaults, one API and two workers need up to 27 connections. With `NODESTRO_AXENTRA=on` the numbers stay the same:
+Axentra uses the process's pool and opens none of its own (one pool per process; nodestro-runtime `docs/AXENTRA.md`). Every connection is checked before it is used, so a
 connection the database dropped (a restart, a failover, a proxy's idle timeout) is replaced without restarting the
 API or the workers.
 
@@ -112,16 +119,22 @@ approved for production yet**; use them on a staging copy first.
 | `NODESTRO_AXENTRA_ALLOW_SUPERUSER` | `1` allows a superuser or `BYPASSRLS` database role (development only; Axentra's row-level security is then no defense in depth) |
 | `NODESTRO_SECRETS_FORMAT` | `axs1`: new tenant secrets use the keyring (rotation); default `v1` |
 | `NODESTRO_AXENTRA_AUDIT`, `NODESTRO_AXENTRA_USAGE` | `1`: mirror the approval/MCP audit trail and the AI usage ledger into Axentra, in the same transaction |
+| `NODESTRO_AXENTRA_RUN_USAGE` | `1`: the worker also settles the usage of finished runs into Axentra's meters, once per run (needs `NODESTRO_AXENTRA_USAGE=1`); no limit is enforced |
+| `NODESTRO_AXENTRA_NOTIFY` | `1`: failed runs, pending tool approvals and budget decisions go to the members' in-app inbox (`/api/notifications`); never e-mail. Notifications need the identity backfill (linked users) |
 | `NODESTRO_AXENTRA_CONFIG` | Optional Axentra TOML file for Axentra's own knobs |
 | `NODESTRO_IDENTITY_BACKEND` | `nodestro` (default), `mirror` (Nodestro answers, identity writes also go to Axentra in the same transaction) or `axentra` (Axentra answers, both are written). Needs `on` |
+| `NODESTRO_FILES_BACKEND` | `volume` (default) or `axentra`: input file bytes in Axentra's storage (`[storage]` in `NODESTRO_AXENTRA_CONFIG`: local directory or S3). Needs `on` |
+| `NODESTRO_FILES_SOURCE_REMOVAL`, `NODESTRO_FILES_SOURCE_RETENTION_DAYS` | `1` allows `files remove-source` (default `0`); days a migrated volume file stays as the fallback (default 30) |
 
 Switching on:
 
 1. Take a backup, then `nodestro-server migrate --backup-dir DIR` (applies Nodestro's and Axentra's migrations
    after one `pg_dump`). `nodestro-server axentra status` shows the switches and pending migrations; `check`, `api`
    and `worker` refuse to start while either schema is behind.
-2. Production: a database role without `SUPERUSER` and `BYPASSRLS` that owns the tables (the development compose file
-   uses the superuser `nodestro`, hence `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` there).
+2. The database roles of [Database roles](#database-roles): the API and the workers connect as a role without
+   `SUPERUSER` and `BYPASSRLS` that owns no tables, or `check`, `api` and `worker` stop with `storage.role_unsafe`.
+   `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` lifts this for a throwaway development database only. The development
+   compose file uses separate roles already.
 3. Key rotation: put the new key first in the keyring, restart, run `nodestro-server secrets reencrypt --dry-run`, then
    `secrets reencrypt` (resumable; an unreadable value is reported and never overwritten, exit code 2). Remove an old
    key only after `pending: 0` and `failed: []`. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
@@ -132,10 +145,88 @@ Switching on:
    `NODESTRO_IDENTITY_BACKEND=mirror`, restart; later `axentra`, restart (refused with `identity.backfill_required`
    while records are missing on one side). Sessions are copied with their hash, so nobody logs in again. Accounts of
    different identity providers are never merged by e-mail address. Back: `axentra` -> `mirror` -> `nodestro`, a
+   restart each; after time in `nodestro` mode run the backfill again before switching forward. In `axentra` mode
+   Axentra also runs the login (same routes and cookies) and decides permissions from its role definitions, which
+   every start registers as a versioned revision (an older image never undoes a newer one; a start with a
+   conflicting revision is refused with `identity.access_conflict`). Login starts are rate-limited per client
+   address: behind the reverse proxy set `FORWARDED_ALLOW_IPS` to the proxy's address so the server sees client
+   addresses. A tenant suspended in Axentra directly is closed too; resume it with `resume-tenant`.
    restart each; after time in `nodestro` mode run the backfill again before switching forward.
+6. Input files: set `[storage]` in `NODESTRO_AXENTRA_CONFIG` (`backend = "local"` with an absolute `local_path` that
+   API and workers share, or `backend = "s3"` with the bucket) and `NODESTRO_FILES_BACKEND=axentra`; `check` must be
+   `ready`; restart. New uploads go to Axentra, older files are read from the data volume. Then
+   `nodestro-server files migrate --dry-run`, `files migrate` (resumable, idempotent, SHA-256 checked, never deletes
+   the volume file; exit code 2 when a file failed) and `files verify` (must print `"ok": true`; `pending` counts
+   files not copied yet, `orphans` lists stored objects without a reference). After the fallback period:
+   `NODESTRO_FILES_SOURCE_REMOVAL=1 nodestro-server files remove-source --dry-run`, then without `--dry-run` (only
+   verified files whose fallback period has passed). Keep the data volume shared between API and workers until then.
+   Back: `files export-volume` (copies the files that exist only in Axentra back to the volume), then
+   `NODESTRO_FILES_BACKEND=volume` and restart. Details: `docs/AXENTRA.md` in nodestro-runtime, section "Files".
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
-the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.
+the `axs1` format need the keyring. `check`, `api` and `worker` refuse to start (`profile.invalid`) with
+`NODESTRO_AXENTRA=off` while `axs1` values exist, and with a keyring that lacks a key id still in use. The way back:
+keep `on` and the keyring, set `NODESTRO_SECRETS_FORMAT=v1`, restart, run `nodestro-server secrets reencrypt` (it
+moves the `axs1` values back to v1) until it reports `pending: 0` and `failed: []`, then switch off. Or restore the
+backup. `nodestro-server axentra status` shows the stored secrets by format and whether the configuration can read
+them.
+
+## Database roles
+
+The server uses two database roles, and the superuser only to create them:
+
+| Role | Used by | Attributes |
+| --- | --- | --- |
+| `nodestro_owner` | `migrate`, `backup`, `db grant-runtime-role`, restores (`NODESTRO_DATABASE_MIGRATION_URL`) | `LOGIN NOSUPERUSER BYPASSRLS`; owns the tables (Nodestro's and Axentra's) and may create objects in the schema |
+| `nodestro_app` | `api`, `worker`, `check` and the other commands (`NODESTRO_DATABASE_URL`) | `LOGIN NOSUPERUSER NOBYPASSRLS`; owns nothing; reads and writes rows, no DDL |
+
+Why: row-level security does not apply to superusers and roles with `BYPASSRLS`, and a table's owner can switch it off.
+Axentra's tables force row-level security per tenant; it is defense in depth only when the server's role is none of
+these. The owner needs `BYPASSRLS` for one reason: `pg_dump` must read every row of those tables (without it the
+backup stops with an error rather than writing an incomplete dump).
+
+`compose/postgres/roles.sql` creates or updates both roles (idempotent; run it as a superuser in the server's
+database with the psql variables `owner_password` and `app_password`). By hand:
+
+```sql
+CREATE ROLE nodestro_owner LOGIN NOSUPERUSER BYPASSRLS PASSWORD '…';
+CREATE ROLE nodestro_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '…';
+GRANT CONNECT, TEMPORARY ON DATABASE nodestro TO nodestro_owner, nodestro_app;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE, CREATE ON SCHEMA public TO nodestro_owner;
+GRANT USAGE ON SCHEMA public TO nodestro_app;
+```
+
+With `NODESTRO_DATABASE_SCHEMA`, create that schema `AUTHORIZATION nodestro_owner` instead of granting on `public`.
+
+`nodestro-server migrate` connects as the owner. Before it changes anything it checks the runtime role (the user of
+`NODESTRO_DATABASE_URL`) and refuses with `storage.role_unsafe` when it is a superuser, has `BYPASSRLS` or owns
+tables; afterwards it grants the runtime role `SELECT, INSERT, UPDATE, DELETE` on every table, `USAGE, SELECT` on the
+sequences and `EXECUTE` on the functions of the schema, now and for later tables (default privileges). It cannot
+write the schema-version tables. Two commands for operators (both as the owner):
+
+| Command | What it does |
+| --- | --- |
+| `nodestro-server db roles` | Prints both roles as JSON: superuser, `BYPASSRLS`, owned tables, whether the owner can back up. Exit code 3 when the runtime role is not restricted |
+| `nodestro-server db grant-runtime-role [ROLE]` | Grants the runtime role (default: the user of `NODESTRO_DATABASE_URL`) its privileges again, for example after a restore with `--no-acl`. Refused (`storage.role_unsafe`) for an unsafe role; needs `NODESTRO_DATABASE_MIGRATION_URL` |
+
+In the development stack: `docker compose -f compose/compose.yaml run --rm --no-deps migrate db roles`.
+
+Moving an existing installation (one role that owns the tables, or a superuser) to separate roles:
+
+1. Take a backup (`nodestro-server backup`).
+2. As a superuser, run `compose/postgres/roles.sql` in the server's database. It creates the roles and gives the
+   owner role the tables, views, sequences, functions and types of the `public` schema that the connecting role owns
+   (nothing is dropped or rewritten). When the tables belong to another role than the one connecting, transfer them
+   instead with `REASSIGN OWNED BY <old owner> TO nodestro_owner;` (every schema of the database, and the database
+   itself; not possible for the cluster's bootstrap superuser, which `roles.sql` covers).
+3. Set `NODESTRO_DATABASE_MIGRATION_URL` (owner) for `migrate` and `backup`, `NODESTRO_DATABASE_URL` (runtime role)
+   everywhere, and remove `NODESTRO_AXENTRA_ALLOW_SUPERUSER`.
+4. Run `nodestro-server migrate` (grants the runtime role), then `nodestro-server db roles` (exit code 0), then start
+   the API and the workers.
+
+The development stack does this by itself: its `db-roles` service runs `roles.sql` on every start, and
+`scripts/dev-secrets.py` rewrites a `database_url` that still names the superuser `nodestro`.
 
 ## Amazon Bedrock for tenants
 
@@ -295,6 +386,36 @@ gives up after 2 seconds). The development stack's health check for the API trea
 same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
 `nodestro-server check`.
 
+## Metrics and status
+
+`GET /api/metrics` serves Prometheus metrics when `NODESTRO_METRICS_TOKEN` (or `_FILE`, at least 32 characters, e.g.
+`openssl rand -hex 32`) is set; without it the route does not exist. The scraper sends
+`Authorization: Bearer <token>`; anything else gets 401. It needs no `NODESTRO_AXENTRA=on` (the image has the
+package). The output has no tenant, user, run or workflow labels and no secrets. Scrape each API process directly
+(the in-process counters are per process); database-derived values are refreshed at most once a minute. Keep the path
+away from the public internet in the proxy if your scraper can reach the API on the private network:
+
+```nginx
+location = /api/metrics { allow 10.0.0.0/8; deny all; proxy_pass http://127.0.0.1:8080; }
+```
+
+Useful series and alerts (names and labels in nodestro-runtime `docs/AXENTRA.md`, "Observability"):
+
+| Series | Watch for |
+| --- | --- |
+| `nodestro_db_pool_requests_waiting{pool}`, `nodestro_db_pool_in_use{pool}` | waiting clients for more than a few minutes: raise the pool size or `max_connections` |
+| `nodestro_jobs{status="queued"}`, `nodestro_jobs_oldest_queued_seconds`, `nodestro_workers_active` | a growing queue or no active worker |
+| `nodestro_jobs_expired_leases` | above 0 for longer than the reap interval: workers die or hang |
+| `nodestro_integration_operations_total{outcome="failed"}` | mirror writes or notifications failing (run `axentra reconcile`) |
+| `nodestro_integration_operations_total{operation="secret_decrypt",outcome="unreadable"}` | stored secrets that cannot be read |
+| `nodestro_axentra_reconcile_backlog{kind}` | records not yet mirrored (should stay near 0 while the mirrors are on) |
+| `nodestro_axentra_migrations_pending`, `nodestro_schema_version` | a schema behind the code after an upgrade |
+
+The worker has no HTTP port and exposes no metrics of its own; its work shows in the database-derived series.
+`nodestro-server axentra status` prints the embedding state for operators: switches, both schema runners, keyring key
+ids (never keys), stored secrets by format, the identity backend and whether it would start, and the reconcile
+backlog. Run events and their live streams are unchanged; they are not notifications.
+
 ## The sandbox daemon
 
 Tool code, including code written by the Workflow Architect or the Assistant, is untrusted. The server runs it only
@@ -329,21 +450,31 @@ nodestro-server backup /backups          # pg_dump, custom format: /backups/node
 tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
 ```
 
+With `NODESTRO_FILES_BACKEND=axentra` input file bytes live in Axentra's storage. On the local backend `backup` also
+writes `/backups/nodestro-files-<time>.tar.gz` of `storage.local_path` (after the dump; uploads in progress left
+out). On S3, back up the bucket with its own versioning or replication. To restore, restore the dump, the data volume
+and the storage archive (or the bucket) of the same time, then run `nodestro-server files verify`: it must print
+`"ok": true` (a file deleted between the dump and the archive is reported as `input.content_missing`).
+
 `backup` passes the database password to `pg_dump` in its environment, never on the command line. Keep backups
+`backup` runs as the owner role (`NODESTRO_DATABASE_MIGRATION_URL`; it needs `BYPASSRLS` to read Axentra's tables, see
+[Database roles](#database-roles)); with `NODESTRO_DATABASE_SCHEMA` it dumps only that schema. It passes the database
+password to `pg_dump` in its environment, never on the command line. Keep backups
 encrypted and off the server; they contain the tenants' data (their provider keys stay encrypted with
 `NODESTRO_SECRET_KEY`, which you keep separately).
 
 To restore:
 
 1. Stop the API and all workers.
-2. Restore the database in one transaction:
+2. Restore the database in one transaction, connected as the owner role (the restored objects belong to the role
+   that restores them; never restore as the runtime role):
    `pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error -d <database> <dump>`, with the
    image's `pg_restore` (version 17, like its `pg_dump`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
 3. Restore the data volume from the archive of the same time.
-4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first), then start the API and the
-   workers.
+4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first; the runtime role is granted its
+   privileges again), then start the API and the workers. Into a new database server: create the roles first.
 
 `scripts/restore.sh DUMP` does steps 1, 2 and 4 for the development stack; the end-to-end tests restore a backup
 this way.
