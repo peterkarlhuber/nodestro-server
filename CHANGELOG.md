@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- RUNBOOK: metrics endpoint (`NODESTRO_METRICS_TOKEN`) with alerts, `axentra status`, the new switches
+  `NODESTRO_AXENTRA_RUN_USAGE` and `NODESTRO_AXENTRA_NOTIFY`, and the start check and way back for `axs1` secrets
+  (takes effect with the next runtime/api pin).
+
 ### Axentra platform services, documented (2026-11-02)
 
 - `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`
