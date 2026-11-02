@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Input files in Axentra's storage, documented (M8, 2026-11-02; off by default)
+
+- RUNBOOK: `NODESTRO_FILES_BACKEND`, `NODESTRO_FILES_SOURCE_REMOVAL`, `NODESTRO_FILES_SOURCE_RETENTION_DAYS`, the
+  `files migrate|verify|remove-source|export-volume` procedure (step 6 of switching on) and backups of Axentra's
+  local storage directory or S3 bucket with `files verify` after a restore. Needs the nodestro-runtime/api pins
+  with M8; nothing is switched on.
+
 ### Axentra platform services, documented (2026-11-02)
 
 - `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`
