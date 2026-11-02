@@ -32,6 +32,7 @@ jobs:
           docker compose -f compose/compose.yaml config --quiet
           NODESTRO_EXTRA_CA_FILE=/etc/ssl/certs/ca-certificates.crt \
             docker compose -f compose/compose.yaml -f compose/extra-ca.yaml config --quiet
+          docker compose -f compose/compose.yaml -f compose/all-switches.yaml config --quiet
       - name: Base images are pinned by digest
         run: |
           python3 -I - <<'PY'
@@ -50,9 +51,9 @@ jobs:
 
   e2e:
     # The acceptance tests of the server (plan step PR-12): image, compose stack, logins, tenants, sandbox, workers,
-    # backup and restore.
+    # backup and restore; then once more with every Axentra migration switch on (compose/all-switches.yaml).
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +92,13 @@ jobs:
       - name: Acceptance tests
         env:
           NODESTRO_IMAGE: nodestro-server:ci
+        run: scripts/e2e.sh -v
+      - name: Acceptance tests, every Axentra switch on
+        # The same stack from scratch with compose/all-switches.yaml layered: the same test_acceptance.py plus the
+        # switched-on paths (tests/e2e/test_all_switches.py). No switch is approved for production by this.
+        env:
+          NODESTRO_IMAGE: nodestro-server:ci
+          NODESTRO_E2E_ALL_SWITCHES: "1"
         run: scripts/e2e.sh -v
       - name: Release manifest and secret scan (dry run)
         env:

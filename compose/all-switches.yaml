@@ -1,0 +1,36 @@
+# Every Axentra migration switch on (docs/RUNBOOK.md, "Axentra platform services"), for development and the
+# end-to-end tests only. No switch is approved for production; never use this file for a real installation.
+#
+#   python3 scripts/dev-secrets.py   # also writes axentra_keyring and metrics_token
+#   COMPOSE_FILE=compose/compose.yaml:compose/all-switches.yaml docker compose up -d --wait
+#   NODESTRO_E2E_ALL_SWITCHES=1 scripts/e2e.sh   # the acceptance tests with this file layered on
+#
+# The database starts empty, so the identity backfill has nothing to copy and NODESTRO_IDENTITY_BACKEND=axentra is
+# allowed from the first start. The API and the worker keep connecting as nodestro_app (no superuser, no BYPASSRLS,
+# owns nothing); only migrate gets the owner's connection (NODESTRO_DATABASE_MIGRATION_URL, compose.yaml), and
+# NODESTRO_AXENTRA_ALLOW_SUPERUSER stays unset, so Axentra's row-level security applies to the runtime role.
+x-all-switches: &all-switches
+  environment:
+    NODESTRO_AXENTRA: "on"
+    NODESTRO_AXENTRA_KEYRING_FILE: /run/secrets/axentra_keyring
+    NODESTRO_AXENTRA_CONFIG: /etc/nodestro/axentra.toml
+    NODESTRO_SECRETS_FORMAT: axs1
+    NODESTRO_AXENTRA_AUDIT: "1"
+    NODESTRO_AXENTRA_USAGE: "1"
+    NODESTRO_AXENTRA_RUN_USAGE: "1"
+    NODESTRO_AXENTRA_NOTIFY: "1"
+    NODESTRO_IDENTITY_BACKEND: axentra
+    NODESTRO_FILES_BACKEND: axentra
+    NODESTRO_METRICS_TOKEN_FILE: /run/secrets/metrics_token
+  secrets: [axentra_keyring, metrics_token]
+  volumes:
+    - ./axentra/axentra.toml:/etc/nodestro/axentra.toml:ro
+
+services:
+  migrate: *all-switches
+  api: *all-switches
+  worker: *all-switches
+
+secrets:
+  axentra_keyring: {file: .secrets/axentra_keyring}
+  metrics_token: {file: .secrets/metrics_token}

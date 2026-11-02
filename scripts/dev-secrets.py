@@ -4,9 +4,11 @@
 Creates the PostgreSQL passwords (the superuser `nodestro`, the owner role `nodestro_owner` and the runtime role
 `nodestro_app`), the database URLs (`database_url`: nodestro_app, for the API and the worker; `database_migration_url`:
 nodestro_owner, for migrate, backups and restores), the OpenID Connect client secret, the server's secret key, the
-Dex environment (client secret and the passwords of the development users alice, bob and mallory) and users.json
-(the same passwords, for the end-to-end tests). The directory is readable only by its owner; the files inside are
-readable by the containers' users. Nothing here is meant for production.
+Dex environment (client secret and the passwords of the development users alice, bob and mallory), users.json
+(the same passwords, for the end-to-end tests), and for compose/all-switches.yaml (every Axentra switch on) the
+Axentra keyring (`axentra_keyring`, one key `k1`) and the metrics bearer token (`metrics_token`). The directory is
+readable only by its owner; the files inside are readable by the containers' users. Nothing here is meant for
+production.
 
 A directory from before the database roles (its `database_url` connects as the superuser `nodestro`) is updated:
 `database_url` is rewritten for nodestro_app; the superuser's password stays. The roles themselves are created by the
@@ -76,6 +78,9 @@ def main() -> int:
     write("oidc_client_secret", client_secret + "\n")
     write("secret_key", base64.b64encode(secrets.token_bytes(32)).decode() + "\n")
     write("users.json", json.dumps(users, indent=2) + "\n")
+    # Only used by compose/all-switches.yaml; the default stack leaves Axentra off and has no metrics endpoint.
+    write("axentra_keyring", "k1:" + base64.b64encode(secrets.token_bytes(32)).decode() + "\n")
+    write("metrics_token", secrets.token_hex(32) + "\n")
     lines = [f"NODESTRO_OIDC_CLIENT_SECRET={client_secret}"]
     lines += [f"DEX_PASSWORD_{name.upper()}={users[name]['password']}" for name in USERS]
     write("dex.env", "\n".join(lines) + "\n")

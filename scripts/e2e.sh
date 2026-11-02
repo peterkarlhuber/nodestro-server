@@ -5,11 +5,19 @@
 #
 # Needs Docker with compose, Python 3.10+ with pytest and httpx, and the image (scripts/build-image.sh). Behind a
 # TLS-inspecting proxy, set NODESTRO_EXTRA_CA_FILE. KEEP_STACK=1 leaves the stack running afterwards.
+# NODESTRO_E2E_ALL_SWITCHES=1 layers compose/all-switches.yaml (every Axentra migration switch on) and runs the tests
+# of the switched-on paths too (tests/e2e/test_all_switches.py); without it those tests are skipped.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 export COMPOSE_FILE="$root/compose/compose.yaml"
 if [ -n "${NODESTRO_EXTRA_CA_FILE:-}" ]; then COMPOSE_FILE="$COMPOSE_FILE:$root/compose/extra-ca.yaml"; fi
+export NODESTRO_E2E_ALL_SWITCHES="${NODESTRO_E2E_ALL_SWITCHES:-0}"
+case "$NODESTRO_E2E_ALL_SWITCHES" in
+  1) COMPOSE_FILE="$COMPOSE_FILE:$root/compose/all-switches.yaml" ;;
+  0) ;;
+  *) echo "NODESTRO_E2E_ALL_SWITCHES must be 0 or 1" >&2; exit 2 ;;
+esac
 # Short leases, so the test of a killed worker does not wait a minute.
 export NODESTRO_WORKER_LEASE_SECONDS="${NODESTRO_WORKER_LEASE_SECONDS:-10}"
 export NODESTRO_WORKER_REAP_SECONDS="${NODESTRO_WORKER_REAP_SECONDS:-2}"

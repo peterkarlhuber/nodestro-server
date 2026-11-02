@@ -44,7 +44,13 @@ They start the stack from scratch and cover:
 | Only the model endpoints the operator allowed | `test_tenants_use_only_the_model_endpoints_the_operator_allowed` |
 | Untrusted tool code runs only in containers of the sandbox daemon, never as a fallback on the host | `test_tool_code_runs_only_in_a_container_of_the_sandbox_daemon`, `test_without_the_sandbox_daemon_tool_code_does_not_run_at_all` |
 | A worker killed in the middle of a run | `test_a_worker_killed_in_the_middle_of_a_run` |
+| A suspended tenant is closed (sessions, logins, its runs) until it is resumed | `test_a_suspended_tenant_is_closed_until_it_is_resumed` |
 | Backup and restore with `pg_dump` | `test_backup_and_restore_with_pg_dump` |
+
+`NODESTRO_E2E_ALL_SWITCHES=1 scripts/e2e.sh -v` runs the same tests with every Axentra migration switch on
+(`compose/all-switches.yaml`, development and tests only), plus `tests/e2e/test_all_switches.py`: the switches and the
+runtime role, `/api/metrics` with and without the token, logins through Axentra, `axs1` secrets, an upload in
+Axentra's storage, the in-app inbox (`/api/notifications`) and the audit/usage mirrors.
 
 Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate bundle (the scripts add
 `compose/extra-ca.yaml`).
