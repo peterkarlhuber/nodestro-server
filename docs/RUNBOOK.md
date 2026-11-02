@@ -51,6 +51,8 @@ The person must have logged in once, so that the server knows them.
 | `nodestro-server set-role TENANT USER ROLE` | Adds the person to the tenant or changes their role (`owner`, `admin`, `editor`, `operator`, `viewer`); takes effect with their next request |
 | `nodestro-server remove-member TENANT USER` | Removes the person from the tenant and ends their sessions there |
 | `nodestro-server revoke-sessions USER` | Ends every session of the person in every tenant (logs them out everywhere; memberships stay) |
+| `nodestro-server suspend-tenant TENANT` | Closes the tenant at once: its sessions, logins, switches to it and setup links are refused (`identity.tenant_suspended`), workers neither start nor continue its runs and fire none of its schedules. Nothing is deleted |
+| `nodestro-server resume-tenant TENANT` | Opens a suspended tenant again; sessions that did not expire meanwhile work again, interrupted runs can be continued |
 
 Errors: `identity.user_unknown` (nobody with that name has logged in yet), `identity.user_ambiguous` (the e-mail
 address names several users; use the user id), `identity.tenant_unknown`, `identity.not_a_member` and
@@ -132,7 +134,12 @@ Switching on:
    `NODESTRO_IDENTITY_BACKEND=mirror`, restart; later `axentra`, restart (refused with `identity.backfill_required`
    while records are missing on one side). Sessions are copied with their hash, so nobody logs in again. Accounts of
    different identity providers are never merged by e-mail address. Back: `axentra` -> `mirror` -> `nodestro`, a
-   restart each; after time in `nodestro` mode run the backfill again before switching forward.
+   restart each; after time in `nodestro` mode run the backfill again before switching forward. In `axentra` mode
+   Axentra also runs the login (same routes and cookies) and decides permissions from its role definitions, which
+   every start registers as a versioned revision (an older image never undoes a newer one; a start with a
+   conflicting revision is refused with `identity.access_conflict`). Login starts are rate-limited per client
+   address: behind the reverse proxy set `FORWARDED_ALLOW_IPS` to the proxy's address so the server sees client
+   addresses. A tenant suspended in Axentra directly is closed too; resume it with `resume-tenant`.
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
 the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Identity completion, documented
+
+- RUNBOOK: `suspend-tenant` / `resume-tenant`; in `axentra` identity mode Axentra runs the login and decides
+  permissions from versioned role definitions; `FORWARDED_ALLOW_IPS` behind the proxy (login start rate limit).
+  Needs the next nodestro-api/runtime pins.
+
 ### Axentra platform services, documented (2026-11-02)
 
 - `studio.json` pins studio `32ca327` (before: `bae25eb`; the merge commit of studio #93): nodestro-runtime `95dbdfa`
