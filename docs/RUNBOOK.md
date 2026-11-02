@@ -151,7 +151,6 @@ Switching on:
    conflicting revision is refused with `identity.access_conflict`). Login starts are rate-limited per client
    address: behind the reverse proxy set `FORWARDED_ALLOW_IPS` to the proxy's address so the server sees client
    addresses. A tenant suspended in Axentra directly is closed too; resume it with `resume-tenant`.
-   restart each; after time in `nodestro` mode run the backfill again before switching forward.
 6. Input files: set `[storage]` in `NODESTRO_AXENTRA_CONFIG` (`backend = "local"` with an absolute `local_path` that
    API and workers share, or `backend = "s3"` with the bucket) and `NODESTRO_FILES_BACKEND=axentra`; `check` must be
    `ready`; restart. New uploads go to Axentra, older files are read from the data volume. Then
@@ -559,6 +558,11 @@ To try roles other than owner, let `bob` log in once and then run
 is for production.
 
 `scripts/e2e.sh` starts the stack from scratch, runs the acceptance tests in `tests/e2e` and removes the stack.
+With `NODESTRO_E2E_ALL_SWITCHES=1` it layers `compose/all-switches.yaml`, which turns every Axentra switch of
+[Axentra platform services](#axentra-platform-services-optional-off-by-default) on for `migrate`, the API and the
+worker (keyring and metrics token from `scripts/dev-secrets.py`, input files in a directory of the data volume, the
+API and the worker still as `nodestro_app`), and also runs `tests/e2e/test_all_switches.py`. That file is for the
+development stack only; it approves no switch for production.
 
 ## Security notes
 

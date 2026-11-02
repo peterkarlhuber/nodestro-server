@@ -25,6 +25,9 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = ROOT / "compose" / "compose.yaml"
 # COMPOSE_FILE may add override files (scripts/e2e.sh: compose/extra-ca.yaml behind a TLS-inspecting proxy).
 os.environ.setdefault("COMPOSE_FILE", str(COMPOSE_FILE))
+#: scripts/e2e.sh with NODESTRO_E2E_ALL_SWITCHES=1: compose/all-switches.yaml is layered (every Axentra switch on).
+ALL_SWITCHES = os.environ.get("NODESTRO_E2E_ALL_SWITCHES") == "1"
+SECRETS = ROOT / "compose" / ".secrets"
 ORIGIN = "http://localhost:8080"
 SESSION_COOKIE = "__Host-nodestro-session"
 LOGIN_COOKIE = "__Host-nodestro-login"
@@ -90,7 +93,7 @@ class Account:
 
 
 def accounts() -> dict[str, Account]:
-    users = json.loads((ROOT / "compose" / ".secrets" / "users.json").read_text())
+    users = json.loads((SECRETS / "users.json").read_text())
     return {name: Account(name, item["email"], item["password"]) for name, item in users.items()}
 
 
@@ -169,6 +172,19 @@ class Browser:
 
     def delete(self, path: str, **kwargs: Any) -> httpx.Response:
         return self.client.delete(path, **kwargs)
+
+
+def psql(sql: str) -> str:
+    """One query as the database's superuser (tab-separated rows, no header): the tests' view behind the server."""
+    return compose("exec", "-T", "postgres", "psql", "-U", "nodestro", "-d", "nodestro", "-AtF", "\t", "-c", sql).stdout
+
+
+def new_tenant(owner: str, prefix: str) -> tuple[str, Browser]:
+    """A fresh tenant whose owner is ``owner`` (an account that logged in before), and a session there."""
+    tenant = f"{prefix}-{uuid.uuid4().hex[:8]}"
+    operator("create-tenant", tenant, tenant.title())
+    operator("set-role", tenant, accounts()[owner].email, "owner")
+    return tenant, login(accounts()[owner], tenant=tenant)
 
 
 @dataclass
