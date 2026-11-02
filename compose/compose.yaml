@@ -28,6 +28,13 @@ x-server: &server
     # NODESTRO_BEDROCK_TENANT_ROLES_FILE: /run/secrets/bedrock_tenant_roles  # {"<tenant_id>": {"role_arn": "…", "external_id": "…"}}
     # NODESTRO_BEDROCK_DATA_RESIDENCY: eu_only
     # NODESTRO_BEDROCK_ALLOWED_REGIONS: eu-central-1,eu-west-1
+    # Axentra platform services (docs/RUNBOOK.md): off unless switched on. The development database role is a superuser.
+    # NODESTRO_AXENTRA: "on"
+    # NODESTRO_AXENTRA_KEYRING_FILE: /run/secrets/axentra_keyring  # k1:<base64 32 bytes>
+    # NODESTRO_AXENTRA_ALLOW_SUPERUSER: "1"
+    # NODESTRO_AXENTRA_AUDIT: "1"
+    # NODESTRO_AXENTRA_USAGE: "1"
+    # NODESTRO_IDENTITY_BACKEND: mirror  # after `nodestro-server axentra backfill-identity`
     NODESTRO_WORKER_LEASE_SECONDS: ${NODESTRO_WORKER_LEASE_SECONDS:-60}
     NODESTRO_WORKER_REAP_SECONDS: ${NODESTRO_WORKER_REAP_SECONDS:-15}
     DOCKER_HOST: tcp://localhost:2376

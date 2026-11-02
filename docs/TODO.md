@@ -11,7 +11,7 @@
 |---|---|
 | P0 Critical | 0 |
 | P1 High | 0 |
-| P2 Medium | 9 |
+| P2 Medium | 10 |
 | P3 Low | 6 |
 | P4 Optional | 2 |
 
@@ -79,7 +79,18 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 
 ## Architecture and modularity
 
-None known. (The image definition here is shared with nodestro-local-docker by design; see its `docs/ARCHITECTURE.md`.)
+The image definition here is shared with nodestro-local-docker by design; see its `docs/ARCHITECTURE.md`.
+
+### SRV-019 · Axentra platform services on a staging server
+
+- **Priority:** P2 Medium · **Status:** Open · **Refs:** RUNBOOK "Axentra platform services", nodestro-runtime
+  `docs/AXENTRA.md` and RT-030
+- **What:** The server can open Axentra (off by default): keyring secrets with rotation, tenant links, audit and
+  usage mirrors. It is tested against PostgreSQL in the component repositories, not yet on a staging server with a
+  copy of real data, a non-superuser role and a restore drill.
+- **Next step:** On a staging copy: dedicated role without `BYPASSRLS`, `migrate --backup-dir`, `secrets reencrypt`,
+  `axentra reconcile`, then restore the backup and compare. No switch is approved for production.
+- **Depends on:** nodestro-runtime RT-030 (identity, independent security review)
 
 ## Performance
 
