@@ -1,0 +1,8 @@
+# Axentra's own settings for compose/all-switches.yaml (NODESTRO_AXENTRA_CONFIG). Nodestro sets the database, the
+# product, the modules and the environment itself (nodestro-runtime docs/AXENTRA.md); only what is left is here.
+#
+# Input file bytes (NODESTRO_FILES_BACKEND=axentra) go to a directory of the data volume, which the API, the worker and
+# the operator commands share. Development and tests only: a production server names its own directory or S3 bucket.
+[storage]
+backend = "local"
+local_path = "/var/lib/nodestro/axentra-storage"

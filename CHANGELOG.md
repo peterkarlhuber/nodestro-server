@@ -10,6 +10,14 @@
 - New end-to-end test: a run in the worker pauses for a budget decision, a raise in the API process continues it in
   a worker, the request is sent once, another tenant sees nothing.
 
+### Every Axentra switch on, end to end (development stack only)
+
+- `compose/all-switches.yaml` (with `compose/axentra/axentra.toml`) turns every Axentra migration switch on for
+  `migrate`, API and worker; `scripts/dev-secrets.py` also writes `axentra_keyring` and `metrics_token`.
+  `NODESTRO_E2E_ALL_SWITCHES=1 scripts/e2e.sh` layers it and runs `tests/e2e/test_all_switches.py` too; CI runs the
+  acceptance tests a second time that way. New acceptance test for `suspend-tenant` / `resume-tenant` (both modes).
+  No switch is approved for production by this.
+
 ### Pins: Axentra completion (2026-11-02)
 
 - `studio.json` pins studio `1db50b8` (before: `32ca327`; the merge commit of studio #94): axentra `f6ae01d`,

@@ -12,7 +12,7 @@
 | P0 Critical | 0 |
 | P1 High | 0 |
 | P2 Medium | 10 |
-| P3 Low | 6 |
+| P3 Low | 7 |
 | P4 Optional | 2 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
@@ -77,23 +77,36 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
   `scripts/restore.sh` restores only the database; no restore drill outside CI.
 - **Next step:** Document and script a quiesced, paired backup; restore and verify tenant files in the acceptance test.
 
+### SRV-020 · `backup` fails before the first upload with Axentra's local storage
+
+- **Priority:** P3 Low · **Status:** Open (bug in nodestro-api `961afef`) · **Refs:** `tests/e2e/test_all_switches.py`
+  `test_a_backup_before_the_first_upload` (strict xfail)
+- **What:** With `NODESTRO_FILES_BACKEND=axentra` and `backend = "local"`, `nodestro-server backup` writes the dump,
+  then exits 1 (`storage.backup_failed: Axentra's storage directory … does not exist`) until a file was uploaded:
+  Axentra creates the directory on its first write. Development stack and staging only (no switch is on in
+  production).
+- **Next step:** Fix in nodestro-runtime/api (create the directory when the file store starts, or archive an empty
+  directory when no file is stored), bump the pins, then remove the xfail marker (strict: the test fails once fixed).
+
 ## Architecture and modularity
 
 The image definition here is shared with nodestro-local-docker by design; see its `docs/ARCHITECTURE.md`.
 
 ### SRV-019 · Axentra platform services on a staging server
 
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** RUNBOOK "Axentra platform services", nodestro-runtime
-  `docs/AXENTRA.md` and RT-030
-- **What:** The server can open Axentra (off by default): keyring secrets with rotation, tenant links, audit and
-  usage mirrors. It is tested against PostgreSQL in the component repositories, not yet on a staging server with a
-  copy of real data and a restore drill. Done: separate database roles (`nodestro_owner` migrates and backs up,
-  `nodestro_app` serves; RUNBOOK "Database roles"; the development stack uses them, an older stack is moved over by
-  its `db-roles` service); Axentra shares the process's connection pool.
-- **Next step:** On a staging copy: move it to the separate roles (RUNBOOK), `migrate --backup-dir`, `db roles`,
-  `secrets reencrypt`, `axentra reconcile`, then restore the backup as the owner and compare. No switch is approved
-  for production.
-- **Depends on:** nodestro-runtime RT-030 (identity, independent security review)
+- **Priority:** P2 Medium · **Status:** Open · **Refs:** RUNBOOK "Axentra platform services" and "Database roles",
+  nodestro-runtime `docs/AXENTRA.md` and RT-030
+- **What:** Every Axentra switch of the server (keyring secrets, tenant links, audit, usage and run-usage mirrors,
+  the inbox, identity `mirror`/`axentra`, input files) is merged and off by default; none is approved for
+  production. They are tested against PostgreSQL in the component repositories and with every switch on in the
+  development stack (`NODESTRO_E2E_ALL_SWITCHES=1 scripts/e2e.sh`, CI too), not yet on a staging server with a
+  copy of real data and a restore drill.
+- **Next step:** On a staging copy of production data: move it to the separate roles (RUNBOOK), `migrate
+  --backup-dir`, `db roles`, `axentra backfill-identity --dry-run` and then without it, `axentra
+  reconcile-identity` (`"ok": true`), `secrets reencrypt`, `axentra reconcile`, `files migrate` and `files verify`
+  against a real S3 bucket; then restore the backup as the owner and compare. Production activation is decided per
+  switch afterwards, not before the independent review (RT-030).
+- **Depends on:** nodestro-runtime RT-030 (independent security review)
 
 ## Performance
 
@@ -104,10 +117,11 @@ None known beyond the load test in SRV-013.
 ### SRV-007 · Monitoring section in the runbook
 
 - **Priority:** P2 Medium · **Status:** Blocked (on nodestro-api observability, backend audit D-10) · **Refs:** backend audit D-10
-- **What:** The runbook covers health checks only. There is no JSON log, request ID, metrics or readiness endpoint to
-  document yet, and workers have no liveness signal besides `nodestro-server check`.
-- **Next step:** When the API adds them, add a "Monitoring" section (what to scrape, alert on, log fields) and
-  wire the dev stack's health checks to them.
+- **What:** The runbook covers health checks and the metrics endpoint ("Metrics and status": what to scrape and
+  alert on). There is no JSON log, request ID or readiness endpoint to document yet, and workers have no liveness
+  signal besides `nodestro-server check`.
+- **Next step:** When the API adds them, document the log fields and readiness there and wire the dev stack's health
+  checks to them.
 - **Depends on:** nodestro-api API-011 (observability, D-10)
 
 ## Tests and quality assurance

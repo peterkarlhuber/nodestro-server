@@ -8,6 +8,7 @@ Every test drives the running stack from the outside (see conftest.py):
 - tool code (untrusted) runs only in a container of the sandbox daemon, never on the server's host, and not at
   all while that daemon is down; tenants reach only the model endpoints the operator allowed;
 - a worker killed in the middle of a run leaves the run interrupted (not executed twice), and other workers go on;
+- a suspended tenant is closed (sessions, logins, its runs) until it is resumed, and other tenants go on;
 - a pg_dump backup restores the database;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
   stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
@@ -21,6 +22,7 @@ import json
 from pathlib import Path
 import secrets
 import subprocess
+import tarfile
 import tempfile
 import time
 from typing import Any
@@ -28,7 +30,20 @@ from typing import Any
 import httpx
 import pytest
 
-from conftest import ORIGIN, Browser, LoginRefused, Tenants, accounts, compose, login, operator, wait_for, wait_healthy
+from conftest import (
+    ALL_SWITCHES,
+    ORIGIN,
+    Browser,
+    LoginRefused,
+    Tenants,
+    accounts,
+    compose,
+    login,
+    new_tenant,
+    operator,
+    wait_for,
+    wait_healthy,
+)
 
 MODEL = "compatible:stub-model"
 STUB = "http://localhost:9100/v1"
@@ -223,7 +238,8 @@ def test_tenants_never_see_each_others_data(tenants: Tenants) -> None:
     assert marker not in bob.get("/api/settings").text
     dump = compose("exec", "-T", "postgres", "pg_dump", "-U", "nodestro", "--data-only", "nodestro").stdout
     assert marker not in dump  # encrypted at rest
-    assert "nodestro:enc:v1:" in dump
+    # NODESTRO_SECRETS_FORMAT=axs1 (compose/all-switches.yaml): Axentra's keyring format instead of v1.
+    assert ("\taxs1.k1." if ALL_SWITCHES else "nodestro:enc:v1:") in dump
 
 
 def test_tenants_use_only_the_model_endpoints_the_operator_allowed(tenants: Tenants) -> None:
@@ -379,16 +395,59 @@ def test_a_budget_decision_in_the_api_continues_the_run_in_the_worker(tenants: T
     assert alice.delete("/api/pricing/overrides/compatible/stub-model").status_code == 204
 
 
+# ---- suspended tenants --------------------------------------------------------------------------------------------
+
+
+def test_a_suspended_tenant_is_closed_until_it_is_resumed(tenants: Tenants) -> None:
+    tenant, bob = new_tenant("bob", "initech")
+    _use_the_stub(bob)
+    prompt = f"SLOW 30 {secrets.token_hex(4)}"
+    run_id = _start(bob, _workflow(bob, _flow("Cut off", prompt)))
+    wait_for(lambda: _stub_count(prompt) == 1, timeout=180, what="the model call of the run")
+    assert "suspended" in operator("suspend-tenant", tenant).stdout
+    try:
+        refused = bob.get("/api/auth/me")
+        assert refused.status_code == 403 and refused.json()["code"] == "identity.tenant_suspended", refused.text
+        with pytest.raises(LoginRefused) as login_refused:
+            login(accounts()["bob"], tenant=tenant)
+        assert login_refused.value.response.json()["code"] == "identity.tenant_suspended"
+        switch = tenants.bob.post("/api/auth/switch", json={"tenant_id": tenant})
+        assert switch.status_code == 403 and switch.json()["code"] == "identity.tenant_suspended", switch.text
+        assert tenants.bob.get("/api/auth/me").json()["tenant_id"] == tenants.globex  # bob's other tenant goes on
+        assert tenant not in tenants.bob.get("/api/auth/me").json()["tenants"]
+        time.sleep(40)  # past the stub's answer: the worker stopped the run, so nothing of it is stored
+    finally:
+        assert "active" in operator("resume-tenant", tenant).stdout
+    assert bob.get("/api/auth/me").json()["tenant_id"] == tenant  # the session works again
+    run = _finished(bob, run_id, timeout=300)
+    assert run["status"] == "failed", run  # interrupted, not finished behind the operator's back
+    assert _stub_count(prompt) == 1
+
+
 # ---- backup and restore -------------------------------------------------------------------------
 
 
 def test_backup_and_restore_with_pg_dump(tenants: Tenants) -> None:
     alice = tenants.alice
     kept = _workflow(alice, _flow("Kept by the backup", "ALPHA"))
+    if ALL_SWITCHES:  # an input file in Axentra's storage, so that the files archive has something to keep
+        marker = "kept-file-" + secrets.token_hex(8)
+        uploaded = alice.post("/api/inputs", files=[("files", (f"{marker}.txt", marker.encode(), "text/plain"))])
+        assert uploaded.status_code == 201, uploaded.text
     with tempfile.TemporaryDirectory() as directory:
         Path(directory).chmod(0o777)  # the image's user (10001) writes the dump
-        result = compose("run", "--rm", "--no-deps", "-T", "-v", f"{directory}:/backups", "api", "backup", "/backups")
-        written = Path(directory) / Path(result.stdout.strip().splitlines()[-1]).name
+        # As the owner role (the migrate service, NODESTRO_DATABASE_MIGRATION_URL), as docs/RUNBOOK.md says: the
+        # runtime role cannot read every row of the tables with row-level security (Axentra's), so its pg_dump fails.
+        result = compose(
+            "run", "--rm", "--no-deps", "-T", "-v", f"{directory}:/backups", "migrate", "backup", "/backups"
+        )
+        printed = [Path(line).name for line in result.stdout.strip().splitlines()]
+        written = Path(directory) / next(name for name in printed if name.endswith(".dump"))
+        if ALL_SWITCHES:  # NODESTRO_FILES_BACKEND=axentra with a local directory: archived next to the dump
+            archive = Path(directory) / next(name for name in printed if name.endswith(".tar.gz"))
+            with tarfile.open(archive) as files:
+                stored = [files.extractfile(item) for item in files.getmembers() if item.isfile()]
+                assert any(marker.encode() == item.read() for item in stored if item), files.getnames()
         assert written.read_bytes().startswith(b"PGDMP")
         assert alice.delete(f"/api/workflows/{kept}").status_code == 204
         later = _workflow(alice, _flow("Written after the backup", "ALPHA"))

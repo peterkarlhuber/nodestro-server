@@ -30,6 +30,7 @@ x-server: &server
     # NODESTRO_BEDROCK_ALLOWED_REGIONS: eu-central-1,eu-west-1
     # Axentra platform services (docs/RUNBOOK.md): off unless switched on. The API and the worker connect as
     # nodestro_app (no superuser, no BYPASSRLS, owns nothing), so Axentra's row-level security applies to them.
+    # compose/all-switches.yaml turns every switch on at once (development and the end-to-end tests only).
     # NODESTRO_AXENTRA: "on"
     # NODESTRO_AXENTRA_KEYRING_FILE: /run/secrets/axentra_keyring  # k1:<base64 32 bytes>
     # NODESTRO_AXENTRA_AUDIT: "1"
