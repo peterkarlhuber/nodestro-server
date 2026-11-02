@@ -114,6 +114,8 @@ approved for production yet**; use them on a staging copy first.
 | `NODESTRO_AXENTRA_ALLOW_SUPERUSER` | `1` allows a superuser or `BYPASSRLS` database role (development only; Axentra's row-level security is then no defense in depth) |
 | `NODESTRO_SECRETS_FORMAT` | `axs1`: new tenant secrets use the keyring (rotation); default `v1` |
 | `NODESTRO_AXENTRA_AUDIT`, `NODESTRO_AXENTRA_USAGE` | `1`: mirror the approval/MCP audit trail and the AI usage ledger into Axentra, in the same transaction |
+| `NODESTRO_AXENTRA_RUN_USAGE` | `1`: the worker also settles the usage of finished runs into Axentra's meters, once per run (needs `NODESTRO_AXENTRA_USAGE=1`); no limit is enforced |
+| `NODESTRO_AXENTRA_NOTIFY` | `1`: failed runs, pending tool approvals and budget decisions go to the members' in-app inbox (`/api/notifications`); never e-mail. Notifications need the identity backfill (linked users) |
 | `NODESTRO_AXENTRA_CONFIG` | Optional Axentra TOML file for Axentra's own knobs |
 | `NODESTRO_IDENTITY_BACKEND` | `nodestro` (default), `mirror` (Nodestro answers, identity writes also go to Axentra in the same transaction) or `axentra` (Axentra answers, both are written). Needs `on` |
 
@@ -142,7 +144,12 @@ Switching on:
    addresses. A tenant suspended in Axentra directly is closed too; resume it with `resume-tenant`.
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
-the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.
+the `axs1` format need the keyring. `check`, `api` and `worker` refuse to start (`profile.invalid`) with
+`NODESTRO_AXENTRA=off` while `axs1` values exist, and with a keyring that lacks a key id still in use. The way back:
+keep `on` and the keyring, set `NODESTRO_SECRETS_FORMAT=v1`, restart, run `nodestro-server secrets reencrypt` (it
+moves the `axs1` values back to v1) until it reports `pending: 0` and `failed: []`, then switch off. Or restore the
+backup. `nodestro-server axentra status` shows the stored secrets by format and whether the configuration can read
+them.
 
 ## Amazon Bedrock for tenants
 
@@ -301,6 +308,36 @@ reaches its database, and 503 `{"status": "unavailable", "database": "unreachabl
 gives up after 2 seconds). The development stack's health check for the API treats the 503 as unhealthy; use the
 same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
 `nodestro-server check`.
+
+## Metrics and status
+
+`GET /api/metrics` serves Prometheus metrics when `NODESTRO_METRICS_TOKEN` (or `_FILE`, at least 32 characters, e.g.
+`openssl rand -hex 32`) is set; without it the route does not exist. The scraper sends
+`Authorization: Bearer <token>`; anything else gets 401. It needs no `NODESTRO_AXENTRA=on` (the image has the
+package). The output has no tenant, user, run or workflow labels and no secrets. Scrape each API process directly
+(the in-process counters are per process); database-derived values are refreshed at most once a minute. Keep the path
+away from the public internet in the proxy if your scraper can reach the API on the private network:
+
+```nginx
+location = /api/metrics { allow 10.0.0.0/8; deny all; proxy_pass http://127.0.0.1:8080; }
+```
+
+Useful series and alerts (names and labels in nodestro-runtime `docs/AXENTRA.md`, "Observability"):
+
+| Series | Watch for |
+| --- | --- |
+| `nodestro_db_pool_requests_waiting{pool}`, `nodestro_db_pool_in_use{pool}` | waiting clients for more than a few minutes: raise the pool size or `max_connections` |
+| `nodestro_jobs{status="queued"}`, `nodestro_jobs_oldest_queued_seconds`, `nodestro_workers_active` | a growing queue or no active worker |
+| `nodestro_jobs_expired_leases` | above 0 for longer than the reap interval: workers die or hang |
+| `nodestro_integration_operations_total{outcome="failed"}` | mirror writes or notifications failing (run `axentra reconcile`) |
+| `nodestro_integration_operations_total{operation="secret_decrypt",outcome="unreadable"}` | stored secrets that cannot be read |
+| `nodestro_axentra_reconcile_backlog{kind}` | records not yet mirrored (should stay near 0 while the mirrors are on) |
+| `nodestro_axentra_migrations_pending`, `nodestro_schema_version` | a schema behind the code after an upgrade |
+
+The worker has no HTTP port and exposes no metrics of its own; its work shows in the database-derived series.
+`nodestro-server axentra status` prints the embedding state for operators: switches, both schema runners, keyring key
+ids (never keys), stored secrets by format, the identity backend and whether it would start, and the reconcile
+backlog. Run events and their live streams are unchanged; they are not notifications.
 
 ## The sandbox daemon
 

@@ -7,6 +7,9 @@
 - RUNBOOK: `suspend-tenant` / `resume-tenant`; in `axentra` identity mode Axentra runs the login and decides
   permissions from versioned role definitions; `FORWARDED_ALLOW_IPS` behind the proxy (login start rate limit).
   Needs the next nodestro-api/runtime pins.
+- RUNBOOK: metrics endpoint (`NODESTRO_METRICS_TOKEN`) with alerts, `axentra status`, the new switches
+  `NODESTRO_AXENTRA_RUN_USAGE` and `NODESTRO_AXENTRA_NOTIFY`, and the start check and way back for `axs1` secrets
+  (takes effect with the next runtime/api pin).
 
 ### Axentra platform services, documented (2026-11-02)
 
