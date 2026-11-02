@@ -9,7 +9,7 @@ must pass unchanged with every switch on); without it they are skipped. They che
 - logins through Dex go through Axentra (identity backend ``axentra``), and both identity sides agree;
 - tenant secrets are stored in the ``axs1`` format;
 - an uploaded input file lands in Axentra's storage, not on the data volume, and reads back unchanged;
-- ``backup`` before the first upload (strict xfail: a known nodestro-api bug, see the marker);
+- ``backup`` succeeds before the first upload, while Axentra's storage directory does not exist yet;
 - a failed run reaches the members' in-app inbox (``/api/notifications``), and only theirs;
 - the audit and usage mirrors and the run usage settlement leave nothing for ``axentra reconcile`` to write.
 """
@@ -172,11 +172,6 @@ def test_an_uploaded_input_file_lands_in_axentras_storage(tenants: Tenants) -> N
     assert _json_output(verify.stdout)["ok"] is True, verify.stdout
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="nodestro-api 961afef: `backup` fails (storage.backup_failed) while Axentra's local storage directory does "
-    "not exist yet, which is the case until the first upload (Axentra creates it on the first write)",
-)
 def test_a_backup_before_the_first_upload(stack: None) -> None:
     # A storage directory no file was written to yet, as on a new installation: Axentra's own configuration with
     # another local_path, mounted next to the real one.
