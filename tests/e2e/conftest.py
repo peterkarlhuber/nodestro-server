@@ -179,11 +179,20 @@ def psql(sql: str) -> str:
     return compose("exec", "-T", "postgres", "psql", "-U", "nodestro", "-d", "nodestro", "-AtF", "\t", "-c", sql).stdout
 
 
+def user_id(account: Account) -> str:
+    """The user id of an account that logged in before. Operator commands take it: an e-mail address alone never
+    names a user there (it is only shown for a confirmation on a terminal)."""
+    email = account.email.replace("'", "''")
+    found = psql(f"SELECT id FROM nodestro_users WHERE lower(email) = lower('{email}')").split()
+    assert len(found) == 1, f"{account.name} has not logged in exactly once: {found}"
+    return found[0]
+
+
 def new_tenant(owner: str, prefix: str) -> tuple[str, Browser]:
     """A fresh tenant whose owner is ``owner`` (an account that logged in before), and a session there."""
     tenant = f"{prefix}-{uuid.uuid4().hex[:8]}"
     operator("create-tenant", tenant, tenant.title())
-    operator("set-role", tenant, accounts()[owner].email, "owner")
+    operator("set-role", tenant, user_id(accounts()[owner]), "owner")
     return tenant, login(accounts()[owner], tenant=tenant)
 
 

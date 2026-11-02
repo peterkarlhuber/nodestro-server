@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Security review fixes, documented (take effect with the next runtime/api pins)
+
+- Members: an e-mail address no longer names a user by itself in `set-role`, `remove-member` and `revoke-sessions`
+  (SR-10): on a terminal the command shows the user with their identity and asks for the user id; otherwise it stops
+  with `identity.user_confirm`. The acceptance tests pass user ids.
+- Key rotation (step 3): `secrets reencrypt` also re-encrypts Axentra's own columns; the start checks their key ids
+  and that each key decrypts stored values (SR-04, SR-05).
+- Input files (step 6): `files verify` fails on leftovers (`orphans`, `unreferenced`), `files cleanup` removes them;
+  run it after switching back from `volume` (SR-09). The volume catalog is locked across processes (SR-08).
+- Backups: an empty storage archive before the first upload; a clear error when `pg_dump` runs without the owner
+  role. A duplicated sentence in the backup paragraph is gone.
+
 ### Every Axentra switch on, end to end (development stack only)
 
 - `compose/all-switches.yaml` (with `compose/axentra/axentra.toml`) turns every Axentra migration switch on for
