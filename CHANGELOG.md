@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Axentra platform services, documented (2026-11-02)
+
+- RUNBOOK section "Axentra platform services (optional, off by default)": the `NODESTRO_AXENTRA*`,
+  `NODESTRO_SECRETS_FORMAT` and mirror switches, switching on with one backup, a role without `BYPASSRLS`, key rotation
+  with `nodestro-server secrets reencrypt`, `axentra reconcile`, and switching off. The development compose file has
+  the variables commented out; nothing is switched on. TODO SRV-019 (staging run before any production use).
+
 ### Studio pin: macOS build fix (2026-11-02)
 
 - `studio.json` pins studio `bae25eb` (before: `0055a30`; the merge commit of studio #89): the frontend component

@@ -98,6 +98,38 @@ defaults, one API and two workers need up to 27 connections. Every connection is
 connection the database dropped (a restart, a failover, a proxy's idle timeout) is replaced without restarting the
 API or the workers.
 
+## Axentra platform services (optional, off by default)
+
+The server can use Axentra, the platform's generic SaaS backend library, in the same PostgreSQL database (tables
+`axentra_*` next to `nodestro_*`). Nothing changes for users: login, sessions, API keys, tenant ids and the API stay
+as they are. Details, rollback and what stays Nodestro's: `docs/AXENTRA.md` in nodestro-runtime. **No switch is
+approved for production yet**; use them on a staging copy first.
+
+| Variable | Meaning |
+| --- | --- |
+| `NODESTRO_AXENTRA` | `on`: open Axentra (default `off`). The image always has the package (Python 3.13) |
+| `NODESTRO_AXENTRA_KEYRING` / `_FILE` | Axentra keyring `kid:base64key[,kid2:…]` (first key encrypts); required with `on`. Keep it like `NODESTRO_SECRET_KEY` |
+| `NODESTRO_AXENTRA_ALLOW_SUPERUSER` | `1` allows a superuser or `BYPASSRLS` database role (development only; Axentra's row-level security is then no defense in depth) |
+| `NODESTRO_SECRETS_FORMAT` | `axs1`: new tenant secrets use the keyring (rotation); default `v1` |
+| `NODESTRO_AXENTRA_AUDIT`, `NODESTRO_AXENTRA_USAGE` | `1`: mirror the approval/MCP audit trail and the AI usage ledger into Axentra, in the same transaction |
+| `NODESTRO_AXENTRA_CONFIG` | Optional Axentra TOML file for Axentra's own knobs |
+
+Switching on:
+
+1. Take a backup, then `nodestro-server migrate --backup-dir DIR` (applies Nodestro's and Axentra's migrations
+   after one `pg_dump`). `nodestro-server axentra status` shows the switches and pending migrations; `check`, `api`
+   and `worker` refuse to start while either schema is behind.
+2. Production: a database role without `SUPERUSER` and `BYPASSRLS` that owns the tables (the development compose file
+   uses the superuser `nodestro`, hence `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` there).
+3. Key rotation: put the new key first in the keyring, restart, run `nodestro-server secrets reencrypt --dry-run`, then
+   `secrets reencrypt` (resumable; an unreadable value is reported and never overwritten, exit code 2). Remove an old
+   key only after `pending: 0` and `failed: []`. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
+4. Mirrors: after switching `NODESTRO_AXENTRA_AUDIT` / `_USAGE` on, `nodestro-server axentra reconcile --dry-run`
+   counts what is missing (older records, a failed mirror) and `axentra reconcile` writes it (idempotent).
+
+Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
+the `axs1` format need the keyring: keep `NODESTRO_AXENTRA=on` while they exist, or restore the backup.
+
 ## Amazon Bedrock for tenants
 
 Tenants **never** use the server's own (ambient) AWS credentials: not its environment, not `~/.aws`, not an
@@ -417,6 +449,6 @@ is for production.
   default 0.50; `NODESTRO_RUN_CHAT_MAX_QUESTIONS`, default 30; `NODESTRO_RUN_CHAT_MAX_INSTRUCTIONS` per orchestrator,
   default 20) and recorded in the usage log (`run_chat`). Runs started by schedules, batches, test series or APIs
   take instructions only when the workflow's orchestrator allows it (`live_steering: always`).
-- Not yet: rotation of `NODESTRO_SECRET_KEY`; published workflow APIs on a server (calls are answered with 405);
+- Not yet: rotation of `NODESTRO_SECRET_KEY` without Axentra (with Axentra: the keyring, see above); published workflow APIs on a server (calls are answered with 405);
   batches and test series (their runs end on the workers, but the batch or series stays `running`, because the
   API process that started it does not learn that they ended). Do not offer these as supported server functions.
