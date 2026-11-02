@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Python 3.11 minimum (2026-11-02)
+
+- Python 3.11 is now the minimum (3.10 reached end of life in October 2026): ruff `target-version = "py311"`; the image
+  already runs 3.13.
+- `studio.json` pins studio `6351ad3` (before: `f79c11d`; the merge commit of studio #103): orkexa `dec66eb`,
+  nodestro-runtime `51262a2`, nodestro-api `ef04cb4`, nodestro-examples `3f91300`, nodestro-integrations `6e0c9e6`,
+  all with Python 3.11 as the minimum; axentra stays `024da57`.
+
 ### Pins: Axentra migration completion and security review fixes (2026-11-02)
 
 - `studio.json` pins studio `f79c11d` (before: `d2724c2`; the merge commit of studio #102, which contains d2724c2): axentra `024da57`,

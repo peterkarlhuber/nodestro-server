@@ -3,7 +3,7 @@
 #
 #   NODESTRO_IMAGE=nodestro-server:dev scripts/e2e.sh [pytest arguments]
 #
-# Needs Docker with compose, Python 3.10+ with pytest and httpx, and the image (scripts/build-image.sh). Behind a
+# Needs Docker with compose, Python 3.11+ with pytest and httpx, and the image (scripts/build-image.sh). Behind a
 # TLS-inspecting proxy, set NODESTRO_EXTRA_CA_FILE. KEEP_STACK=1 leaves the stack running afterwards.
 # NODESTRO_E2E_ALL_SWITCHES=1 layers compose/all-switches.yaml (every Axentra migration switch on) and runs the tests
 # of the switched-on paths too (tests/e2e/test_all_switches.py); without it those tests are skipped.
