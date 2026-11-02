@@ -40,13 +40,18 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
    `nodestro-server create-tenant acme "Acme Inc."` and `nodestro-server setup-link acme`. The link is valid for
    24 hours and once; whoever logs in with it becomes the tenant's first owner.
 8. Add everyone else (see [Members](#members)): each person logs in once (they are told that they have no access
-   yet), then an operator grants a role, for example `nodestro-server set-role acme bob@example.com editor`.
+   yet), then an operator grants a role, for example `nodestro-server set-role acme bob@example.com editor` (on a
+   terminal: the command shows the user and their identity and asks for their user id) or
+   `nodestro-server set-role acme u_… editor`.
 
 ## Members
 
 Members are managed with operator commands; they cannot be managed in the studio yet. `USER` is a user id
-(`u_…`), a verified e-mail address (compared case-insensitively) or the person's subject at the identity provider.
-The person must have logged in once, so that the server knows them.
+(`u_…`) or the person's subject at the configured identity provider. An e-mail address (compared
+case-insensitively) only looks the person up: it is the latest claim of the identity provider, so it never names a
+user by itself. The command prints the matching user with their provider, subject and name and goes on only when you
+type that user id; without a terminal (scripts, `docker compose run -T`) it stops with `identity.user_confirm` and
+names the user id to use. The person must have logged in once, so that the server knows them.
 
 | Command | What it does |
 | --- | --- |
@@ -57,8 +62,9 @@ The person must have logged in once, so that the server knows them.
 | `nodestro-server suspend-tenant TENANT` | Closes the tenant at once: its sessions, logins, switches to it and setup links are refused (`identity.tenant_suspended`), workers neither start nor continue its runs and fire none of its schedules. Nothing is deleted |
 | `nodestro-server resume-tenant TENANT` | Opens a suspended tenant again; sessions that did not expire meanwhile work again, interrupted runs can be continued |
 
-Errors: `identity.user_unknown` (nobody with that name has logged in yet), `identity.user_ambiguous` (the e-mail
-address names several users; use the user id), `identity.tenant_unknown`, `identity.not_a_member` and
+Errors: `identity.user_unknown` (nobody with that name has logged in yet), `identity.user_confirm` (an e-mail address
+that was not confirmed; use the user id it names), `identity.user_ambiguous` (the e-mail address names several users,
+each listed with their identity; use the user id), `identity.tenant_unknown`, `identity.not_a_member` and
 `identity.last_owner` (a tenant keeps at least one owner).
 
 ## Configuration
@@ -137,8 +143,11 @@ Switching on:
    `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` lifts this for a throwaway development database only. The development
    compose file uses separate roles already.
 3. Key rotation: put the new key first in the keyring, restart, run `nodestro-server secrets reencrypt --dry-run`, then
-   `secrets reencrypt` (resumable; an unreadable value is reported and never overwritten, exit code 2). Remove an old
-   key only after `pending: 0` and `failed: []`. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
+   `secrets reencrypt` (resumable; an unreadable value is reported and never overwritten, exit code 2). Without
+   `--tenant` it also re-encrypts Axentra's own encrypted columns (its `axentra` section; `pending` and `failed` count
+   both, `nodestro_pending`/`nodestro_failed` Nodestro's part alone). Remove an old key only after `pending: 0` and
+   `failed: []`: the start refuses a keyring that lacks a key id still used by Nodestro's or Axentra's values, or
+   whose key under a known id does not decrypt the stored values. Keep `NODESTRO_SECRET_KEY` while v1 values remain.
 4. Mirrors: after switching `NODESTRO_AXENTRA_AUDIT` / `_USAGE` on, `nodestro-server axentra reconcile --dry-run`
    counts what is missing (older records, a failed mirror) and `axentra reconcile` writes it (idempotent).
 5. Identity: `nodestro-server axentra backfill-identity --dry-run`, then without `--dry-run` (idempotent, one
@@ -157,11 +166,17 @@ Switching on:
    `ready`; restart. New uploads go to Axentra, older files are read from the data volume. Then
    `nodestro-server files migrate --dry-run`, `files migrate` (resumable, idempotent, SHA-256 checked, never deletes
    the volume file; exit code 2 when a file failed) and `files verify` (must print `"ok": true`; `pending` counts
-   files not copied yet, `orphans` lists stored objects without a reference). After the fallback period:
+   files not copied yet). Leftovers older than an hour make `verify` print `"ok": false` (exit code 2): `orphans`
+   (stored objects without a reference, e.g. from an interrupted copy) and `unreferenced` (references no input file
+   uses, e.g. a file deleted while the backend was `volume`). `files cleanup --dry-run` lists them, `files cleanup`
+   deletes them in Axentra (never on the volume). After the fallback period:
    `NODESTRO_FILES_SOURCE_REMOVAL=1 nodestro-server files remove-source --dry-run`, then without `--dry-run` (only
    verified files whose fallback period has passed). Keep the data volume shared between API and workers until then.
    Back: `files export-volume` (copies the files that exist only in Axentra back to the volume), then
-   `NODESTRO_FILES_BACKEND=volume` and restart. Details: `docs/AXENTRA.md` in nodestro-runtime, section "Files".
+   `NODESTRO_FILES_BACKEND=volume` and restart. Files deleted while the backend is `volume` are deleted only on the
+   volume: after switching forward again, run `files verify` and `files cleanup` so their content leaves Axentra too.
+   The volume's catalog is locked across processes, so `remove-source` and `export-volume` may run while the API and
+   the workers do. Details: `docs/AXENTRA.md` in nodestro-runtime, section "Files".
 
 Switching off again needs no data change (Axentra's tables stay and are not read), except that values written in
 the `axs1` format need the keyring. `check`, `api` and `worker` refuse to start (`profile.invalid`) with
@@ -469,16 +484,17 @@ tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
 
 With `NODESTRO_FILES_BACKEND=axentra` input file bytes live in Axentra's storage. On the local backend `backup` also
 writes `/backups/nodestro-files-<time>.tar.gz` of `storage.local_path` (after the dump; uploads in progress left
-out). On S3, back up the bucket with its own versioning or replication. To restore, restore the dump, the data volume
-and the storage archive (or the bucket) of the same time, then run `nodestro-server files verify`: it must print
-`"ok": true` (a file deleted between the dump and the archive is reported as `input.content_missing`).
+out; before the first upload the archive is empty). On S3, back up the bucket with its own versioning or
+replication. To restore, restore the dump, the data volume and the storage archive (or the bucket) of the same time,
+then run `nodestro-server files verify`: it must print `"ok": true` (a file deleted between the dump and the archive
+is reported as `input.content_missing`).
 
-`backup` passes the database password to `pg_dump` in its environment, never on the command line. Keep backups
 `backup` runs as the owner role (`NODESTRO_DATABASE_MIGRATION_URL`; it needs `BYPASSRLS` to read Axentra's tables, see
-[Database roles](#database-roles)); with `NODESTRO_DATABASE_SCHEMA` it dumps only that schema. It passes the database
-password to `pg_dump` in its environment, never on the command line. Keep backups
-encrypted and off the server; they contain the tenants' data (their provider keys stay encrypted with
-`NODESTRO_SECRET_KEY`, which you keep separately).
+[Database roles](#database-roles)). Without that variable `pg_dump` runs as the runtime role, which row-level
+security keeps from reading every row: `backup` then stops with `storage.backup_failed` and names the variable. With
+`NODESTRO_DATABASE_SCHEMA` it dumps only that schema. It passes the database password to `pg_dump` in its
+environment, never on the command line. Keep backups encrypted and off the server; they contain the tenants' data
+(their provider keys stay encrypted with `NODESTRO_SECRET_KEY`, which you keep separately).
 
 To restore:
 
@@ -571,7 +587,7 @@ Open http://localhost:8080. The users `alice`, `bob` and `mallory` (`@example.co
 passwords in `compose/.secrets/users.json`. Create a tenant and its setup link with
 `docker compose -f compose/compose.yaml run --rm api create-tenant acme Acme` and `… run --rm api setup-link acme`.
 To try roles other than owner, let `bob` log in once and then run
-`… run --rm api set-role acme bob@example.com editor`. The API and the worker use the host's network (so
+`… run --rm api set-role acme bob@example.com editor` and type the user id it shows. The API and the worker use the host's network (so
 `localhost` means the same to the browser and the server), which is why the stack is Linux-only. Dex keeps its state in memory and the model stub answers from a script: neither
 is for production.
 

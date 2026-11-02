@@ -12,7 +12,7 @@
 | P0 Critical | 0 |
 | P1 High | 0 |
 | P2 Medium | 10 |
-| P3 Low | 7 |
+| P3 Low | 6 |
 | P4 Optional | 2 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
@@ -76,17 +76,6 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **What:** `backup` (pg_dump) and the tar of `NODESTRO_DATA_DIR` are not taken at one point in time;
   `scripts/restore.sh` restores only the database; no restore drill outside CI.
 - **Next step:** Document and script a quiesced, paired backup; restore and verify tenant files in the acceptance test.
-
-### SRV-020 · `backup` fails before the first upload with Axentra's local storage
-
-- **Priority:** P3 Low · **Status:** Open (bug in nodestro-api `961afef`) · **Refs:** `tests/e2e/test_all_switches.py`
-  `test_a_backup_before_the_first_upload` (strict xfail)
-- **What:** With `NODESTRO_FILES_BACKEND=axentra` and `backend = "local"`, `nodestro-server backup` writes the dump,
-  then exits 1 (`storage.backup_failed: Axentra's storage directory … does not exist`) until a file was uploaded:
-  Axentra creates the directory on its first write. Development stack and staging only (no switch is on in
-  production).
-- **Next step:** Fix in nodestro-runtime/api (create the directory when the file store starts, or archive an empty
-  directory when no file is stored), bump the pins, then remove the xfail marker (strict: the test fails once fixed).
 
 ## Architecture and modularity
 
