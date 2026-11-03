@@ -608,6 +608,11 @@ A release has three separate steps. Only the last two publish anything, and each
   1. Stop the API and the workers.
   2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and
      restore"). An older image refuses a newer schema (`storage.schema_too_new`) instead of misreading it.
+     `pg_restore --clean` replaces only the objects that are in the dump: tables, indexes and functions that the
+     newer release's migrations created stay in the database. The older release ignores them and a later upgrade
+     migrates over them, but for an exact rollback restore into a new, empty database instead (created by the owner
+     role like the original, the roles already exist) and point `NODESTRO_DATABASE_URL` and
+     `NODESTRO_DATABASE_MIGRATION_URL` at it.
   3. Start the previous image's `migrate`, then its API and workers.
 - Supported: linux/amd64 images (the e2e tests run on that platform only). The Dockerfile also has an arm64 docker
   CLI checksum, but no arm64 image is built or tested.
