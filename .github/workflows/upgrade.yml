@@ -1,0 +1,77 @@
+# A real upgrade of the PostgreSQL stack (tests/e2e/test_upgrade.py): the previous release (tests/upgrade-from.json:
+# its compose file and its image) with data is upgraded to the current checkout and image with migrate --backup-dir,
+# rolled back, upgraded again, and its backup is restored by the current release. Two image builds make it too slow
+# for every pull request: it runs when the pins, the stack or the test change, weekly, and on demand.
+# Publishes nothing; no secrets (the Nodestro and orkexa repositories are public).
+name: upgrade
+
+on:
+  pull_request:
+    paths:
+      - studio.json
+      - tests/upgrade-from.json
+      - tests/e2e/test_upgrade.py
+      - tests/e2e/conftest.py
+      - compose/**
+      - image/**
+      - scripts/build-image.sh
+      - scripts/dev-secrets.py
+      - scripts/restore.sh
+      - .github/workflows/upgrade.yml
+  push:
+    branches: [master]
+    paths:
+      - studio.json
+      - tests/upgrade-from.json
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upgrade-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The previous release (tests/upgrade-from.json)
+        id: from
+        run: |
+          python3 -I - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, sys
+          pinned = json.load(open("tests/upgrade-from.json"))
+          for key in ("nodestro-server", "nodestro-studio"):
+              if not re.fullmatch(r"[0-9a-f]{40}", pinned[key]):
+                  sys.exit(f"tests/upgrade-from.json: {key} must be a full commit SHA")
+          print(f"server={pinned['nodestro-server']}")
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.from.outputs.server }}
+          path: upgrade-from
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install pytest==8.4.2 httpx==0.28.1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        with:
+          driver: docker
+      - name: Build the previous image (its own studio.json and build script)
+        run: upgrade-from/scripts/build-image.sh nodestro-server:upgrade-from
+      - name: Build the current image (studio.json)
+        run: scripts/build-image.sh nodestro-server:ci
+      - name: Upgrade, rollback, upgrade again, old backup restore
+        env:
+          NODESTRO_UPGRADE_FROM: upgrade-from
+          NODESTRO_UPGRADE_FROM_IMAGE: nodestro-server:upgrade-from
+          NODESTRO_IMAGE: nodestro-server:ci
+        run: python3 -m pytest tests/e2e/test_upgrade.py -v -p no:cacheprovider

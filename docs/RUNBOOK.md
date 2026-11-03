@@ -561,6 +561,9 @@ this way.
    API and workers. A database written by a newer release is refused (`storage.schema_too_new`); downgrade by
    restoring the backup.
 
+The CI job `upgrade` (`.github/workflows/upgrade.yml`) runs these steps and the rollback below against the
+development stack, from the previous release in `tests/upgrade-from.json` to the current image.
+
 PostgreSQL migrations 5 and 6 (added with the backend audit fixes) create and rebuild indexes on
 `nodestro_documents` (6 makes the `status` and `trigger_ref` indexes partial, then runs `ANALYZE`). Building them
 blocks writes to that table until they are done, which takes longer the more documents the database holds: plan a

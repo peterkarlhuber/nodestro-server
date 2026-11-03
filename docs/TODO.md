@@ -11,7 +11,7 @@
 |---|---|
 | P0 Critical | 0 |
 | P1 High | 0 |
-| P2 Medium | 10 |
+| P2 Medium | 9 |
 | P3 Low | 6 |
 | P4 Optional | 2 |
 
@@ -122,16 +122,6 @@ None known beyond the load test in SRV-013.
 - **Priority:** P3 Low · **Status:** Open (CI needs no secret since 2026-11-03) · **Refs:** #19
 - **What:** Major version bump of an action; its `e2e` job fails only because the secret is missing.
 - **Next step:** Re-run #19, review the v4 changes, merge if green.
-
-### SRV-021 · PostgreSQL upgrade test from the previous release in CI
-
-- **Priority:** P2 Medium · **Status:** Open (the OPS2-01 fix is pinned since studio `997f485`) · **Refs:** backend
-  audit round 2 OPS2-01, OPS2-11; drill `backend-audit-2/work/ops/repro/upgrade/drill.sh` (internal)
-- **What:** No CI job upgrades a PostgreSQL database written by the previous release. The documented
-  `migrate --backup-dir` path deadlocked on databases from before migration checksums (fixed in nodestro-runtime,
-  OPS2-01), and nothing caught it. Nodestro Local Docker (SQLite) has such a test since 2026-11-03.
-- **Next step:** Add an upgrade job (old image + data, new image, `migrate --backup-dir`,
-  restore of the old backup, rollback) on pin changes and weekly, like local-docker's `upgrade.yml`.
 
 ## Platform coverage
 

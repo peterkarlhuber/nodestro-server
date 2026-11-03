@@ -1,0 +1,5 @@
+{
+  "comment": "The previous release that tests/e2e/test_upgrade.py upgrades from (.github/workflows/upgrade.yml), by full commit SHA: the server commit of the v0.2.0-preview.1 candidate and the studio commit its studio.json pins. The job checks out that server commit and builds its image with its own compose file and build script. Move it forward to the last released or widely installed server commit, never to the current one.",
+  "nodestro-server": "5bc7b821c6307dd24806ba3848f1656e4444227b",
+  "nodestro-studio": "78710ce6ec59477096978e1622676e8fa0e0fbe9"
+}

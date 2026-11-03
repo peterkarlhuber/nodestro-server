@@ -14,6 +14,13 @@
   nodestro-api `84ca99d`, `check` also fetches the identity provider's discovery document, which workers do not use.
   Without the option each worker would poll the identity provider every 10 seconds and turn unhealthy while it is down.
   RUNBOOK updated.
+- `studio.json` pins studio `b7c8af2` (merge commit of studio #111, UX round: frontend only; the backend pins of
+  `997f485` are unchanged).
+- New CI job `upgrade` (`.github/workflows/upgrade.yml`, `tests/e2e/test_upgrade.py`): the previous release
+  (`tests/upgrade-from.json`, server `5bc7b82` of the `v0.2.0-preview.1` candidate, with its own compose file and
+  image) gets data and a backup, then is upgraded as the RUNBOOK says (`migrate --backup-dir`, bounded in time so that
+  a hang like OPS2-01 fails), rolled back with the backup that `migrate` wrote, upgraded again, and its old backup is
+  restored by the current release. Runs when the pins, the stack or the test change, weekly and on demand (SRV-021).
 
 ### Nodestro–Axentra migration close-out (2026-11-03)
 
