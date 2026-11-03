@@ -13,28 +13,14 @@ dump="${1:?usage: restore.sh DUMP}"
 test -s "$dump" || { echo "no dump at $dump" >&2; exit 1; }
 export COMPOSE_FILE="${COMPOSE_FILE:-$(cd "$(dirname "$0")/.." && pwd)/compose/compose.yaml}"
 docker compose stop api worker
-# pg_restore of the server image: the same version as the pg_dump that wrote the backup (a dump of a newer pg_dump
-# cannot be read by an older pg_restore). The password goes to it in its environment, never on the command line.
+# The restore runs in the server image (scripts/restore_dump.py: its pg_restore and psql are the same version as the
+# pg_dump that wrote the backup; extensions are left out; the newer release's tables that are not in the dump are
+# dropped; one transaction). The password goes to the tools in their environment, never on the command line.
 dir="$(cd "$(dirname "$dump")" && pwd)"
-# Extensions (pgvector) are left out of the restore: a superuser installs them (compose/postgres/roles.sql, run by
-# db-roles), and the owner role may neither drop nor create them, so `--clean` would stop at DROP EXTENSION.
-docker compose run --rm --no-deps -T -v "$dir/$(basename "$dump"):/restore/backup.dump:ro" --entrypoint python migrate -I -c '
-import os, re, subprocess, tempfile
-from psycopg.conninfo import conninfo_to_dict, make_conninfo
-with open("/run/secrets/database_migration_url", encoding="utf-8") as file:
-    parts = conninfo_to_dict(file.read().strip())
-environment = dict(os.environ)
-password = parts.pop("password", None)
-if password is not None:
-    environment["PGPASSWORD"] = str(password)
-listing = subprocess.run(["pg_restore", "--list", "/restore/backup.dump"], capture_output=True, text=True, check=True)
-extension = re.compile(r"^\d+; \d+ \d+ (EXTENSION - |COMMENT - EXTENSION )")
-with tempfile.NamedTemporaryFile("w", suffix=".list", delete=False) as chosen:
-    chosen.writelines(line + "\n" for line in listing.stdout.splitlines() if not extension.match(line))
-os.execvpe("pg_restore", ["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
-    "--exit-on-error", "--use-list=" + chosen.name, "--dbname=" + make_conninfo("", **parts), "/restore/backup.dump"],
-    environment)
-'
+here="$(cd "$(dirname "$0")" && pwd)"
+docker compose run --rm --no-deps -T -v "$dir/$(basename "$dump"):/restore/backup.dump:ro" \
+  -v "$here/restore_dump.py:/restore/restore_dump.py:ro" --entrypoint python migrate -I /restore/restore_dump.py \
+  /restore/backup.dump
 docker compose run --rm --no-deps -T migrate
 docker compose up -d --no-deps api worker
 echo "restored $dump"

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Studio pin: local models chain (2026-11-03)
+
+- Pins nodestro-studio 97564f4 (studio #115): orkexa 71f8aaf, nodestro-runtime 90ba97b, nodestro-api a24f32b,
+  nodestro-examples 7b79fde, nodestro-integrations 3026776. The server gets the European model catalog entries and the
+  "prefer European models" setting, thinking off at effort "low" for local thinking models, and the optional mDenseOn
+  embedding build (the image now carries `gguf` and `numpy` through orkexa `[convert]`). The server runs no local model
+  server; Ollama endpoints still come through `NODESTRO_MODEL_ENDPOINTS`.
+- Restores (`scripts/restore.sh`, the upgrade test, the RUNBOOK) run `scripts/restore_dump.py`: in one transaction it
+  drops the owner role's tables, views and sequences that are not in the dump, then applies the dump. The runtime's
+  migration `0010` adds `nodestro_chunk_vectors` with a foreign key to `nodestro_chunks`; restoring the backup taken
+  before it (a rollback) stopped at `DROP CONSTRAINT nodestro_chunks_pkey` ("other objects depend on it").
+
 ### PostgreSQL with pgvector for semantic knowledge search (2026-11-03)
 
 - The development stack's `postgres` and `db-roles` use `pgvector/pgvector:0.8.7-pg17`, pinned by the digest of its

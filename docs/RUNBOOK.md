@@ -572,11 +572,15 @@ To restore:
 1. Stop the API and all workers.
 2. Restore the database in one transaction, connected as the owner role (the restored objects belong to the role
    that restores them; never restore as the runtime role):
-   `pg_restore --list <dump> | grep -Ev '^[0-9]+; [0-9]+ [0-9]+ (EXTENSION - |COMMENT - EXTENSION )' > restore.list`,
-   then `pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error --use-list=restore.list
-   -d <database> <dump>`, with the image's `pg_restore` (version 17, like its `pg_dump`). The list leaves the
-   extensions (pgvector) out: the owner role cannot drop or create them, so `--clean` would stop at
-   `DROP EXTENSION`. Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
+   `python -I scripts/restore_dump.py <dump>` in the server image (it reads the owner role's connection from
+   `/run/secrets/database_migration_url`). It does, in one transaction (`psql --single-transaction`):
+   - leave the extensions (pgvector) out of `pg_restore --list` (the owner role cannot drop or create them, so
+     `--clean` would stop at `DROP EXTENSION`);
+   - drop the owner role's tables, views and sequences that are not in the dump: a newer release's migrations created
+     them, and one with a foreign key to a restored table would stop `--clean`;
+   - apply `pg_restore --clean --if-exists --no-owner --use-list=<list> --file=- <dump>`.
+
+   Use the image's `pg_restore` and `psql` (version 17, like its `pg_dump`). Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
 3. Restore the data volume from the archive of the same time.
@@ -648,11 +652,10 @@ A release has three separate steps. Only the last two publish anything, and each
   1. Stop the API and the workers.
   2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and
      restore"). An older image refuses a newer schema (`storage.schema_too_new`) instead of misreading it.
-     `pg_restore --clean` replaces only the objects that are in the dump: tables, indexes and functions that the
-     newer release's migrations created stay in the database. The older release ignores them and a later upgrade
-     migrates over them, but for an exact rollback restore into a new, empty database instead (created by the owner
-     role like the original, the roles already exist) and point `NODESTRO_DATABASE_URL` and
-     `NODESTRO_DATABASE_MIGRATION_URL` at it.
+     The restore drops the tables, views and sequences that the newer release's migrations created; functions and
+     types they created stay (the older release ignores them, a later upgrade replaces them). For an exact rollback,
+     restore into a new, empty database instead (created by the owner role like the original, the roles already
+     exist) and point `NODESTRO_DATABASE_URL` and `NODESTRO_DATABASE_MIGRATION_URL` at it.
   3. Start the previous image's `migrate`, then its API and workers.
 - Supported: linux/amd64 images (the e2e tests run on that platform only). The Dockerfile also has an arm64 docker
   CLI checksum, but no arm64 image is built or tested.
