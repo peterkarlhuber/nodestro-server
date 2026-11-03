@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Studio pin: local AI optimization (2026-11-03)
+
+- Pins nodestro-studio 74a9aa6 (studio #117): orkexa 4ec738c (robust hybrid fusion of knowledge search),
+  nodestro-runtime 3006ce0 (CPU saving mode for thinking models, context window and hardware advice), nodestro-api
+  c2a2ad3 (per-agent local models when copying an example), nodestro-examples be55542, nodestro-integrations f5a25d6.
+  On the server the speed measurement of local models is refused for tenants (the operator's models), and the saving
+  mode applies only to Ollama endpoints that report CPU use; an endpoint whose hardware is unknown is never reduced.
+
 ### Studio pin: local models chain (2026-11-03)
 
 - Pins nodestro-studio 97564f4 (studio #115): orkexa 71f8aaf, nodestro-runtime 90ba97b, nodestro-api a24f32b,
