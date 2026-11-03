@@ -369,28 +369,65 @@ The API listens on plain http; put it behind a proxy that terminates TLS and for
 `__Host-` prefixed and `Secure`, so the studio works only over https (and on localhost for development).
 
 ```nginx
+# http block (for example /etc/nginx/conf.d/nodestro.conf): the request line and the referrer are logged
+# without their query string, so setup links (?setup=) and sign-in codes (?code=, &state=) never reach the
+# proxy's access log. nginx's predefined "combined" format logs the full request line: do not use it here.
+map $request_uri $nodestro_log_path {
+    "~^(?<path>[^?]*)" $path;
+}
+map $http_referer $nodestro_log_referer {
+    "~^(?<ref>[^?]*)" $ref;
+}
+log_format nodestro '$remote_addr [$time_local] "$request_method $nodestro_log_path $server_protocol" '
+                    '$status $body_bytes_sent $request_time "$nodestro_log_referer" "$http_user_agent"';
+
 server {
     listen 443 ssl;
     server_name studio.example.com;
     ssl_certificate     /etc/ssl/studio.pem;
     ssl_certificate_key /etc/ssl/studio.key;
+    access_log /var/log/nginx/studio.access.log nodestro;
+    error_log  /var/log/nginx/studio.error.log warn;
     client_max_body_size 100m;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
         proxy_buffering off;            # run events are streamed
         proxy_read_timeout 1h;
+    }
+    # nginx's error messages quote the full request line and the upstream URL, query included (for example
+    # when the API is unreachable). Where setup links and sign-in callbacks arrive, only critical errors are
+    # logged.
+    location /api/auth/ {
+        error_log /var/log/nginx/studio.error.log crit;
+        proxy_pass http://127.0.0.1:8080;
+    }
+    location = /api/mcp/oauth/callback {
+        error_log /var/log/nginx/studio.error.log crit;
+        proxy_pass http://127.0.0.1:8080;
     }
 }
 ```
 
+The proxy's logs must not contain the query strings of `/api/auth/` and `/api/mcp/oauth/callback`: a setup link is
+valid for 24 hours and makes whoever completes the login the tenant's owner. The server redacts these values in its
+own access log (see [Security notes](#security-notes)), but that does not cover the proxy, which logs the request one
+hop earlier. Other proxies need the same: Caddy's access log (`format filter`, a `query` filter on `request>uri` that
+deletes `setup`, `code` and `state`), Traefik's access log (`fields.names.RequestPath: redact`), a load balancer's
+request log. `scripts/test_runbook_proxy.py` checks this example (and, with Docker, runs nginx with it).
+
+Browser security headers (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, and `Strict-Transport-Security` when `NODESTRO_PUBLIC_ORIGIN` is https) are set by the server
+itself from the nodestro-api version with API2-02 on; do not add them in the proxy as well, since a second header with
+a different value can break the studio. With an older pinned studio, add at least
+`add_header Strict-Transport-Security "max-age=31536000" always;` to the `server` block.
+
 Bind the API to `127.0.0.1` or a private network (`nodestro-server api --host 127.0.0.1`); never publish port 8080.
 
 The server has no rate limit for logins of its own, so a rate limit for `/api/auth/` in the proxy is still advisable
-(for nginx: a `limit_req_zone` in the `http` block and a `location /api/auth/` with `limit_req` and the same
-`proxy_*` settings). The server serves the studio gzip-compressed, with long-lived immutable caching for the
+(for nginx: a `limit_req_zone` in the `http` block and `limit_req` in the `location /api/auth/` above). The server serves the studio gzip-compressed, with long-lived immutable caching for the
 content-hashed files under `/assets` and `no-cache` for `index.html`, so the proxy need not compress it.
 
 ## Run budget decisions
@@ -606,8 +643,9 @@ development stack only; it approves no switch for production.
 - A login is bound to the browser that started it: `/api/auth/login` sets a `__Host-nodestro-login` cookie (valid
   for 10 minutes) that must match the login's `state` at `/api/auth/callback`; otherwise the callback answers 400
   `identity.login_expired`.
-- The access log never contains the values of `setup`, `code` and `state` query parameters (setup links and sign-in
-  codes); they are replaced by `[redacted]`.
+- The server's access log never contains the values of `setup`, `code` and `state` query parameters (setup links and
+  sign-in codes); they are replaced by `[redacted]`. The reverse proxy logs them unless it is configured not to (see
+  [TLS reverse proxy](#tls-reverse-proxy)).
 - Run, Workflow Architect and assistant event streams end within about 15 seconds after the viewer's session or
   membership ends.
 - Every request is bound to the session's tenant; a tenant's data is never visible to another tenant.
