@@ -26,6 +26,12 @@ jobs:
       - run: pip install ruff==0.17.0
       - run: ruff check . && ruff format --check .
       - run: python3 -I scripts/test_scan_secrets.py
+      # The RUNBOOK's nginx example keeps setup links and sign-in codes out of the proxy's logs (static checks, then
+      # nginx itself with the example).
+      - name: RUNBOOK proxy example logs no login secrets
+        env:
+          NODESTRO_PROXY_PROBE: "1"
+        run: python3 -I scripts/test_runbook_proxy.py
       - name: Compose files are valid
         run: |
           python3 scripts/dev-secrets.py
@@ -68,19 +74,11 @@ jobs:
         with:
           driver: docker
       - name: Build the image
-        # The Nodestro components and orkexa are private: the build reads them with a token that can read them,
-        # passed as a BuildKit secret (never a layer or a build argument).
-        env:
-          NODESTRO_READ: ${{ secrets.NODESTRO_READ }}
+        # The Nodestro components and orkexa are public: the build clones them anonymously (no token).
         run: |
-          if [ -z "$NODESTRO_READ" ]; then
-            echo "::error::Secret NODESTRO_READ is missing: a token with read access to orkexa and the nodestro repositories."
-            exit 1
-          fi
           scripts/build-image.sh nodestro-server:ci
       - name: Build the Nodestro Local Docker target (the same definition, shared stages)
         env:
-          NODESTRO_READ: ${{ secrets.NODESTRO_READ }}
           NODESTRO_TARGET: local
         run: |
           scripts/build-image.sh nodestro-local:ci
@@ -103,8 +101,6 @@ jobs:
           NODESTRO_E2E_ALL_SWITCHES: "1"
         run: scripts/e2e.sh -v
       - name: Release manifest and secret scan (dry run)
-        env:
-          NODESTRO_SCAN_SECRETS: ${{ secrets.NODESTRO_READ }}
         run: |
           docker save -o "$RUNNER_TEMP/image.tar" nodestro-server:ci
           python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/image.tar"

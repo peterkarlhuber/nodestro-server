@@ -123,6 +123,13 @@ RUN --mount=type=secret,id=build_ca \
     rm /tmp/docker.tgz; \
     apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*; \
     docker --version
+# The base image's own pip and the pip wheel of ensurepip are never used: the environment in /opt/nodestro has no pip
+# either (finalize.sh), and uv creates tool environments without seeding pip. Image scanners would otherwise report
+# pip's vendored packages (urllib3, msgpack) in every image (OPS2-07).
+RUN python -I -m pip uninstall --yes --disable-pip-version-check --root-user-action=ignore pip \
+    && rm -f /usr/local/lib/python3.*/ensurepip/_bundled/*.whl \
+    && ! python -I -c "import pip" 2>/dev/null \
+    && test ! -e /usr/local/bin/pip
 RUN useradd --system --uid 10001 --home-dir /var/lib/nodestro --create-home nodestro
 
 # ---- Nodestro Local Docker (target `local`) -------------------------------------------------------

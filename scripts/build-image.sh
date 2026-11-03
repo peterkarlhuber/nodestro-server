@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Build the server image from the studio commit in studio.json (every component pinned by full commit SHA).
 #
-#   NODESTRO_READ=<token with read access to the component repositories> scripts/build-image.sh [TAG]
+#   scripts/build-image.sh [TAG]
 #
-# The token reaches the build only as a BuildKit secret, never as an argument or a layer. Behind a
+# The component repositories are public. An optional read token in NODESTRO_READ reaches the build only as a
+# BuildKit secret, never as an argument or a layer. Behind a
 # TLS-inspecting proxy, NODESTRO_EXTRA_CA_FILE names its certificate bundle (passed as the `build_ca` secret).
 # NODESTRO_VERSION (default `dev`) becomes the image's version label; every image is labeled unsigned, and a version
 # with a pre-release part (`v0.2.0-preview.1`) is labeled as a preview.
