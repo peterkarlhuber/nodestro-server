@@ -57,25 +57,9 @@ EXTRA_CA = os.environ.get("NODESTRO_EXTRA_CA_FILE", "")
 UPGRADE_SECONDS = int(os.environ.get("NODESTRO_UPGRADE_SECONDS", "240"))
 BACKUPS = "/var/lib/nodestro/backups"  # compose/compose.yaml: migrate --backup-dir
 TENANT = "acme-upgrade"
-# pg_restore of the image as the owner role (database_migration_url), like scripts/restore.sh, for a dump on the
-# data volume. The password goes to it in its environment, never on the command line.
-RESTORE = r"""
-import os, re, subprocess, sys, tempfile
-from psycopg.conninfo import conninfo_to_dict, make_conninfo
-with open("/run/secrets/database_migration_url", encoding="utf-8") as file:
-    parts = conninfo_to_dict(file.read().strip())
-environment = dict(os.environ)
-password = parts.pop("password", None)
-if password is not None:
-    environment["PGPASSWORD"] = str(password)
-# Extensions (pgvector) are a superuser's (compose/postgres/roles.sql); the owner role cannot drop or create them.
-listing = subprocess.run(["pg_restore", "--list", sys.argv[1]], capture_output=True, text=True, check=True)
-extension = re.compile(r"^\d+; \d+ \d+ (EXTENSION - |COMMENT - EXTENSION )")
-with tempfile.NamedTemporaryFile("w", suffix=".list", delete=False) as chosen:
-    chosen.writelines(line + "\n" for line in listing.stdout.splitlines() if not extension.match(line))
-os.execvpe("pg_restore", ["pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction",
-    "--exit-on-error", "--use-list=" + chosen.name, "--dbname=" + make_conninfo("", **parts), sys.argv[1]], environment)
-"""
+# The restore of scripts/restore.sh (scripts/restore_dump.py), for a dump on the data volume: as the owner role, in
+# one transaction, without extensions and without the newer release's tables.
+RESTORE = (ROOT / "scripts" / "restore_dump.py").read_text(encoding="utf-8")
 
 
 def _use(checkout: Path, image: str) -> None:
@@ -226,7 +210,7 @@ def test_upgrade_rollback_and_reupgrade_keep_the_data(stack: None, tmp_path: Pat
     assert _names(alice) == before, "the rollback lost data or kept the new release's writes"
     _runs(alice, old_workflow)
 
-    # Upgrade again after the rollback (the newer release's tables are still in the database, see the RUNBOOK).
+    # Upgrade again after the rollback (the restore dropped the newer release's tables; migrate creates them again).
     compose("stop", "api", "worker")
     _switch_to_new_release()
     assert len(_pre_migration_dumps()) == 2

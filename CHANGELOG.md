@@ -9,6 +9,10 @@
   "prefer European models" setting, thinking off at effort "low" for local thinking models, and the optional mDenseOn
   embedding build (the image now carries `gguf` and `numpy` through orkexa `[convert]`). The server runs no local model
   server; Ollama endpoints still come through `NODESTRO_MODEL_ENDPOINTS`.
+- Restores (`scripts/restore.sh`, the upgrade test, the RUNBOOK) run `scripts/restore_dump.py`: in one transaction it
+  drops the owner role's tables, views and sequences that are not in the dump, then applies the dump. The runtime's
+  migration `0010` adds `nodestro_chunk_vectors` with a foreign key to `nodestro_chunks`; restoring the backup taken
+  before it (a rollback) stopped at `DROP CONSTRAINT nodestro_chunks_pkey` ("other objects depend on it").
 
 ### PostgreSQL with pgvector for semantic knowledge search (2026-11-03)
 
