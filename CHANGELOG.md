@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Nodestro–Axentra migration close-out (2026-11-03)
+
+- `studio.json` pins studio `83d8998` (before: `139bce3`; the merge commit of studio #107): nodestro-runtime `bcfea7f`
+  (static tenant SQL check gaps closed, #89 and round 4; a suspended tenant's tool generation jobs stop and start no
+  install, NF-1 and R4-7), Axentra `2767a2e` (invitation tokens kept out of URLs and logs; the GET OIDC start refuses
+  invitations), orkexa `0861c1b`, nodestro-api `f21fd6a` and nodestro-sdk `d12ba72`. No server code changes.
+
 ### Docker-first follow-up (2026-11-02)
 
 - `studio.json` pins studio `139bce3` (before: `6351ad3`; the merge commit of studio #105): nodestro-runtime `958be1d`
