@@ -41,6 +41,7 @@ from conftest import (
     login,
     new_tenant,
     operator,
+    psql,
     wait_for,
     wait_healthy,
 )
@@ -165,6 +166,13 @@ def test_an_incomplete_or_unsafe_configuration_is_refused(
 def test_the_configured_server_is_ready(stack: None) -> None:
     result = operator("check")
     assert result.stdout.strip().endswith("ready"), result.stdout + result.stderr
+
+
+def test_the_database_has_pgvector_for_semantic_knowledge_search(stack: None) -> None:
+    # Installed by the superuser (compose/postgres/roles.sql via db-roles): pgvector is not a trusted extension, so the
+    # owner role could not install it in a migration. The runtime ranks vectors with it where it is installed.
+    assert psql("SELECT extversion FROM pg_extension WHERE extname = 'vector'").strip() == "0.8.7"
+    assert psql("SELECT '[1,2,3]'::vector <=> '[1,2,3]'::vector").strip() == "0"
 
 
 # ---- authentication -----------------------------------------------------------------------------

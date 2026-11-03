@@ -12,7 +12,7 @@
 | P0 Critical | 0 |
 | P1 High | 0 |
 | P2 Medium | 9 |
-| P3 Low | 6 |
+| P3 Low | 7 |
 | P4 Optional | 2 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
@@ -94,7 +94,14 @@ The image definition here is shared with nodestro-local-docker by design; see it
 
 ## Performance
 
-None known beyond the load test in SRV-013.
+### SRV-020 · Semantic knowledge search at server scale
+
+- **Priority:** P3 Low · **Status:** Open · **Refs:** nodestro-runtime `docs/local-models.md`, migration `0010`
+- **What:** pgvector ranks the vectors with exact cosine similarity (no HNSW/IVFFlat index), and the embedding model
+  runs on an operator's Ollama endpoint. Neither was measured on server hardware with many tenants and large
+  knowledge bases; the acceptance tests only check that the extension is installed and works.
+- **Next step:** Add an acceptance test that builds a semantic index through a model stub with `/api/embed`, then
+  measure search latency and reindex throughput on target hardware (with SRV-013); decide on an approximate index.
 
 ## Features and enhancements
 
@@ -173,9 +180,9 @@ None known beyond SRV-007.
 ### SRV-015 · Development stack images by tag
 
 - **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit D-16
-- **What:** PostgreSQL, Dex and Docker-in-Docker in `compose/compose.yaml` are referenced by tag (documented in the
-  README); the image's own bases are pinned by digest.
-- **Next step:** Pin them by digest and let Dependabot (docker ecosystem) keep them current.
+- **What:** Dex and Docker-in-Docker in `compose/compose.yaml` are referenced by tag (documented in the README); the
+  image's own bases and PostgreSQL (`pgvector/pgvector:0.8.7-pg17`) are pinned by digest.
+- **Next step:** Pin them by digest and let Dependabot (docker ecosystem) keep them current, the PostgreSQL image too.
 
 ### SRV-016 · Warn when the pinned studio falls behind
 

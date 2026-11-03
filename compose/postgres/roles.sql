@@ -8,6 +8,10 @@
 --   nodestro_app    the API and the worker (NODESTRO_DATABASE_URL). No superuser, no BYPASSRLS, owns nothing: row-level
 --                   security applies to it. Its table privileges are granted by `migrate` (as the owner).
 --
+-- pgvector (the extension `vector`) is installed when the server has it: semantic knowledge search ranks vectors in the
+-- database then (nodestro-runtime migration 0010). pgvector is not a trusted extension, so the owner role cannot
+-- install it itself; without it the runtime ranks the vectors.
+--
 -- An existing database whose tables a superuser created (the development setup before these roles) is moved over:
 -- the tables, views, sequences, functions and types of the public schema that the connecting superuser owns are given
 -- to the owner role. Nothing is dropped, nothing is rewritten.
@@ -81,3 +85,9 @@ SELECT format('ALTER TYPE %s OWNER TO %I', t.oid::regtype, :'owner_role')
                      AND d.deptype = 'e')
 \gexec
 COMMIT;
+
+-- pgvector, where the server has it (the development stack's image does). Idempotent; an installed version is kept
+-- (update it with ALTER EXTENSION vector UPDATE after a new image).
+SELECT 'CREATE EXTENSION IF NOT EXISTS vector'
+ WHERE EXISTS (SELECT FROM pg_available_extensions WHERE name = 'vector')
+\gexec

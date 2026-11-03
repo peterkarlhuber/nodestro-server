@@ -11,7 +11,7 @@ same image and the same settings with its own PostgreSQL, identity provider, TLS
 | `nodestro-server api` | The studio (web interface and API) with logins | Stateless; several can run behind the proxy |
 | `nodestro-server worker` | Executes queued runs, reaps runs of dead workers, fires schedules, cleans up | One or more |
 | `nodestro-server migrate` | Applies database migrations, then exits | Before API and workers start |
-| PostgreSQL 17 | All data of all tenants | Back it up (see below); the image's `pg_dump`/`pg_restore` are version 17 |
+| PostgreSQL 17 (with pgvector, recommended) | All data of all tenants | Back it up (see below); the image's `pg_dump`/`pg_restore` are version 17. pgvector: see [Semantic knowledge search](#semantic-knowledge-search-and-local-models) |
 | OpenID Connect provider | Logins (Keycloak, Entra ID, Okta, Dex, …) | The server never sees passwords |
 | Sandbox Docker daemon | Runs tool code in containers | Not the host's daemon (see below) |
 | TLS reverse proxy | https for the studio | nginx, Caddy, Traefik, a load balancer |
@@ -28,7 +28,8 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
 2. Create the database and two roles (see [Database roles](#database-roles)): `nodestro_owner` owns the tables and
    runs `migrate`, backups and restores; `nodestro_app` is the API's and the workers' role. As a superuser, connected
    to the new database: `psql -d nodestro -v owner_password=… -v app_password=… -f compose/postgres/roles.sql` after
-   `CREATE DATABASE nodestro;` (or the statements in [Database roles](#database-roles) by hand).
+   `CREATE DATABASE nodestro;` (or the statements in [Database roles](#database-roles) by hand). Where the server
+   has pgvector, `roles.sql` also installs it (`CREATE EXTENSION IF NOT EXISTS vector`).
 3. Register a client at your identity provider: confidential client, authorization code flow with PKCE (S256),
    redirect URI `https://<studio host>/api/auth/callback`, scopes `openid email profile`.
 4. Generate the server's secret key once and keep it with your other secrets: `openssl rand -base64 32`.
@@ -216,6 +217,9 @@ GRANT USAGE ON SCHEMA public TO nodestro_app;
 
 With `NODESTRO_DATABASE_SCHEMA`, create that schema `AUTHORIZATION nodestro_owner` instead of granting on `public`.
 
+Optional, as the superuser: `CREATE EXTENSION IF NOT EXISTS vector;` where pgvector is available (`roles.sql` does it
+by itself). pgvector is not a trusted extension, so neither role can install it.
+
 `nodestro-server migrate` connects as the owner. Before it changes anything it checks the runtime role (the user of
 `NODESTRO_DATABASE_URL`) and refuses with `storage.role_unsafe` when it is a superuser, has `BYPASSRLS` or owns
 tables; afterwards it grants the runtime role `SELECT, INSERT, UPDATE, DELETE` on every table, `USAGE, SELECT` on the
@@ -244,6 +248,33 @@ Moving an existing installation (one role that owns the tables, or a superuser) 
 
 The development stack does this by itself: its `db-roles` service runs `roles.sql` on every start, and
 `scripts/dev-secrets.py` rewrites a `database_url` that still names the superuser `nodestro`.
+
+## Semantic knowledge search and local models
+
+Knowledge search has three modes (nodestro-runtime `docs/local-models.md`): full text (the default, needs nothing),
+`vector` and `hybrid` (embeddings, once a person built a knowledge base's semantic index). The vectors are stored in
+the table `nodestro_chunk_vectors` (migration `0010`, tenant-scoped like every other table) as `real[]`.
+
+- **pgvector** (recommended): PostgreSQL ranks the vectors. The development stack uses
+  `pgvector/pgvector:0.8.7-pg17`, the official `postgres:17` image plus the extension, pinned by digest in
+  `compose/compose.yaml`; `db-roles` installs the extension as the superuser. For your own PostgreSQL 17, install
+  the pgvector package of your distribution or provider and run `CREATE EXTENSION IF NOT EXISTS vector;` as a
+  superuser in the server's database (or `roles.sql` again). Migration `0010` tries the same, but as the owner role it
+  usually may not and goes on without it.
+- **Without pgvector**: semantic search still works; the runtime ranks the same rows (slower for large knowledge
+  bases). Installing pgvector later needs no reindex: the stored vectors are used as they are.
+
+Switching an existing compose installation from `postgres:17` to the pgvector image keeps the data volume: both are
+PostgreSQL 17 with the same data format. Rolling back to `postgres:17` also starts; the installed extension is then
+unused. `ALTER EXTENSION vector UPDATE;` (superuser) after a new pgvector image.
+
+Backups contain the extension's `CREATE EXTENSION` entry, which the owner role may neither drop nor create. Restores
+leave extensions out (see [Backup and restore](#backup-and-restore)); a superuser installs them.
+
+The server runs **no local model server** of its own. Tenants use models on self-hosted endpoints (Ollama, vLLM, …)
+that the operator runs and lists in `NODESTRO_MODEL_ENDPOINTS` (for example `http://ollama.internal:11434`); the
+embedding model of semantic search (default `qwen3-embedding:0.6b`) runs on such an endpoint too. Run Ollama on a host
+with enough memory (GPU recommended), on a network the workers and the API reach and the internet does not.
 
 ## Amazon Bedrock for tenants
 
@@ -541,8 +572,11 @@ To restore:
 1. Stop the API and all workers.
 2. Restore the database in one transaction, connected as the owner role (the restored objects belong to the role
    that restores them; never restore as the runtime role):
-   `pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error -d <database> <dump>`, with the
-   image's `pg_restore` (version 17, like its `pg_dump`). The client tools and the server must have the same major
+   `pg_restore --list <dump> | grep -Ev '^[0-9]+; [0-9]+ [0-9]+ (EXTENSION - |COMMENT - EXTENSION )' > restore.list`,
+   then `pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error --use-list=restore.list
+   -d <database> <dump>`, with the image's `pg_restore` (version 17, like its `pg_dump`). The list leaves the
+   extensions (pgvector) out: the owner role cannot drop or create them, so `--clean` would stop at
+   `DROP EXTENSION`. Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
 3. Restore the data volume from the archive of the same time.
@@ -581,7 +615,7 @@ What the acceptance tests ran on. Anything else is untested, not unsupported by 
 | Part | Tested | Not tested |
 | --- | --- | --- |
 | Container host | linux/amd64, Docker Engine with Compose v2 (GitHub `ubuntu-latest` runner, Ubuntu 24.04) | arm64, Podman, Kubernetes, Docker Desktop on macOS or Windows |
-| Database | PostgreSQL 17 (the image's `pg_dump`/`pg_restore` are version 17) | other major versions |
+| Database | PostgreSQL 17 with pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`; the image's `pg_dump`/`pg_restore` are version 17) | other major versions; managed PostgreSQL services |
 | Identity provider | Dex v2.44.0 (OpenID Connect, authorization code with PKCE) | Keycloak, Entra ID, Okta, others (standard OIDC, expected to work) |
 | Sandbox daemon | Docker-in-Docker 29.9.2 with TLS, a separate daemon from the host's | a remote Docker host on another machine |
 | Browsers for the studio | none against the server image: the acceptance tests use HTTP clients | Chromium, Firefox, Safari against a server |
