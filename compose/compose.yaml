@@ -50,8 +50,11 @@ services:
   # The superuser `nodestro` administers the database only; no server process uses it (docs/RUNBOOK.md, "Database
   # roles"). The server's roles nodestro_owner (owns the tables: migrate, backup, restore) and nodestro_app (the API
   # and the worker) are created by the db-roles service.
+  # PostgreSQL 17 with pgvector (the official postgres:17 image plus the extension; same data format). pgvector lets
+  # the database rank the vectors of semantic knowledge search; db-roles installs it (docs/RUNBOOK.md, "Semantic
+  # knowledge search"). Pinned by digest of the multi-platform index.
   postgres:
-    image: postgres:17
+    image: &postgres-image pgvector/pgvector:0.8.7-pg17@sha256:7d0a41464797aeb9862dfdc0bbf1526b82cfd324cdd8036df19e3545f4a9ccb8
     restart: unless-stopped
     environment:
       POSTGRES_USER: nodestro
@@ -115,11 +118,12 @@ services:
       timeout: 5s
       retries: 30
 
-  # Creates or updates the roles nodestro_owner and nodestro_app (compose/postgres/roles.sql, idempotent), then exits.
+  # Creates or updates the roles nodestro_owner and nodestro_app (compose/postgres/roles.sql, idempotent) and installs
+  # pgvector, then exits.
   # Runs on every start, so a database created before these roles is moved over too: the tables the superuser owned
   # are given to nodestro_owner.
   db-roles:
-    image: postgres:17
+    image: *postgres-image
     restart: "no"
     entrypoint: ["/etc/nodestro/roles.sh"]
     environment:

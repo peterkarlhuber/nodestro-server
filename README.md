@@ -5,7 +5,7 @@ plus a development stack and the end-to-end acceptance tests.
 
 - `image/`: the image. `studio.json` names the nodestro-studio commit it is built from; that commit pins every
   component by full commit SHA. `scripts/build-image.sh` builds it.
-- `compose/`: the development and test stack (Linux): PostgreSQL 17, Dex as the identity provider, an isolated
+- `compose/`: the development and test stack (Linux): PostgreSQL 17 with pgvector, Dex as the identity provider, an isolated
   Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's
   `migrate`, `api` and `worker`.
 - `tests/e2e/`: acceptance tests that drive the running stack like browsers and operators do.
@@ -62,8 +62,9 @@ Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate b
 - The development stack is Linux-only (the server containers use the host's network). Production installations
   follow the runbook on any Docker host.
 - Dex and the model stub are for development and tests only.
-- The image's base images are pinned by digest; the development stack's PostgreSQL, Dex and Docker-in-Docker images
-  are referenced by tag.
+- The image's base images and the development stack's PostgreSQL (pgvector) image are pinned by digest; its Dex and
+  Docker-in-Docker images are referenced by tag.
+- No local model server: self-hosted model endpoints (Ollama, vLLM) are the operator's (`NODESTRO_MODEL_ENDPOINTS`).
 - The server's secret key cannot be rotated yet.
 
 ## Open work

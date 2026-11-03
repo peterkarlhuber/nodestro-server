@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### PostgreSQL with pgvector for semantic knowledge search (2026-11-03)
+
+- The development stack's `postgres` and `db-roles` use `pgvector/pgvector:0.8.7-pg17`, pinned by the digest of its
+  multi-platform index (before: `postgres:17` by tag). It is the official PostgreSQL 17 image plus pgvector, so an
+  existing data volume is kept as it is. The CI check of digest pins covers it.
+- `compose/postgres/roles.sql` installs the extension (`CREATE EXTENSION IF NOT EXISTS vector`) as the superuser where
+  it is available. pgvector is not a trusted extension: the owner role cannot install it, so nodestro-runtime's
+  migration `0010` alone would leave it out. With it, PostgreSQL ranks the vectors of semantic knowledge search;
+  without it the runtime does.
+- Restores (`scripts/restore.sh`, the upgrade test, the RUNBOOK's steps) leave extensions out of `pg_restore`: as the
+  owner role, `--clean` stopped at `DROP EXTENSION vector` ("must be owner of extension vector") for every backup of
+  a database with pgvector.
+- New acceptance test: the database has pgvector 0.8.7 and it works. RUNBOOK: new section "Semantic knowledge search
+  and local models" (pgvector for your own PostgreSQL, no local model server in the server, Ollama endpoints through
+  `NODESTRO_MODEL_ENDPOINTS`), install, database roles, restore and tested requirements updated. docs/TODO.md: SRV-015
+  narrowed, SRV-020 (semantic search at server scale) added.
+
 ### Backend audit round 2: pins and worker health check (2026-11-03)
 
 - `studio.json` pins studio `997f485` (before: `83d8998`; the merge commit of studio #110): nodestro-runtime `140d479`
