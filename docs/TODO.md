@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-03 against `master` at `1f8e14b` (backend audit round 2).
+> **Last full review:** 2026-11-03 against `master` at `ac2ef9a` (close-out of the backend audit round 2).
 
 ## Summary
 
@@ -217,6 +217,13 @@ None known beyond SRV-007.
 | – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
 | – | nodestro-api | API-008 (`check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES`) | Owned there |
 | – | nodestro-desktop | DSK-011 sync check of shared release scripts | This repo holds the source copies |
+
+## CI access to private repositories
+
+Keep the repository secret `NODESTRO_READ`; do not delete it. CI currently installs the sibling repositories anonymously
+because they are public, and does not need the secret. When the repositories become private, CI authenticates again
+with this read-only secret, passed only in the environment of the install steps (never in a global Git configuration,
+a log or an image layer).
 
 ## Maintaining this file
 
