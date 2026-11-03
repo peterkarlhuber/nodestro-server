@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Backend audit round 2: pins and worker health check (2026-11-03)
+
+- `studio.json` pins studio `997f485` (before: `83d8998`; the merge commit of studio #110): nodestro-runtime `140d479`
+  (`migrate --backup-dir` no longer deadlocks on databases from before migration checksums, OPS2-01; approvals inbox
+  by indexed status, pooled connections checked after a database restart, keyset run pages), nodestro-api `84ca99d` (security headers, request body limit, keyset run
+  list, idempotent run starts, uniform error bodies, origin checks), Axentra `a872242` (tenant-scoped overview,
+  limited backdating), orkexa `bc8c4ed` (sandbox calls stopped on timeout and cancel), nodestro-examples `8499edf`,
+  nodestro-integrations `e2582cc` and nodestro-sdk `d68c67b`.
+- The worker health check in `compose/compose.yaml` runs `nodestro-server check --skip-identity-provider`: since
+  nodestro-api `84ca99d`, `check` also fetches the identity provider's discovery document, which workers do not use.
+  Without the option each worker would poll the identity provider every 10 seconds and turn unhealthy while it is down.
+  RUNBOOK updated.
+
 ### Nodestro–Axentra migration close-out (2026-11-03)
 
 - `studio.json` pins studio `83d8998` (before: `139bce3`; the merge commit of studio #107): nodestro-runtime `bcfea7f`

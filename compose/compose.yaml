@@ -167,7 +167,7 @@ services:
       migrate: {condition: service_completed_successfully}
       sandbox: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "nodestro-server", "check"]
+      test: ["CMD", "nodestro-server", "check", "--skip-identity-provider"]
       interval: 10s
       timeout: 10s
       retries: 30

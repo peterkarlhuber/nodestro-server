@@ -98,8 +98,10 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` | The sandbox daemon (TLS with client certificates) |
 | `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE`, `AWS_CA_BUNDLE` | Only behind a TLS-inspecting proxy: its certificate bundle. The AWS SDK (Bedrock, STS) ignores `SSL_CERT_FILE` and reads only `AWS_CA_BUNDLE`; `compose/extra-ca.yaml` sets all three |
 
-`nodestro-server check` validates all of it and exits with 0 when the server is ready. An incomplete or unsafe
-configuration is refused with `profile.invalid`, listing every problem at once; secret values are never printed.
+`nodestro-server check` validates these settings, the database (role and schema), the container runtime and the
+identity provider's discovery document (`NODESTRO_OIDC_ISSUER`), and exits with 0 when the server is ready. An
+incomplete or unsafe configuration is refused with `profile.invalid`, listing every problem at once; secret values are
+never printed.
 
 The server never uses provider keys from its own environment for tenants: each tenant enters its own keys, which
 are stored encrypted (AES-256-GCM, a key per tenant derived from `NODESTRO_SECRET_KEY`). Amazon Bedrock has no key:
@@ -446,7 +448,8 @@ fail with `run.budget_exceeded` as before. Every request and decision is in the 
 reaches its database, and 503 `{"status": "unavailable", "database": "unreachable"}` when it does not (the check
 gives up after 2 seconds). The development stack's health check for the API treats the 503 as unhealthy; use the
 same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
-`nodestro-server check`.
+`nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the API uses it), so a
+worker neither polls it every few seconds nor turns unhealthy while it is down.
 
 ## Metrics and status
 
