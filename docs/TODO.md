@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-01 against `master` at `5a4306d`.
+> **Last full review:** 2026-11-03 against `master` at `1f8e14b` (backend audit round 2).
 
 ## Summary
 
@@ -19,7 +19,7 @@
 `v0.2.0-preview.1` server candidate may be prepared, but publishing needs an explicit owner decision (SRV-001).
 
 The server image, compose stack, acceptance tests and runbook are in good shape for a supervised pilot on Linux
-amd64. For production use, the gaps are operational: CI that works without secrets, vulnerability scans, consistent
+amd64. For production use, the gaps are operational: vulnerability scans, consistent
 backups, observability, reproducible builds, load tests and an external security review.
 
 ## Priorities and statuses
@@ -45,19 +45,14 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 
 ## Security
 
-### SRV-002 · CI must not require the `NODESTRO_READ` secret
-
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** #25, backend audit D-08; same change in runtime #75 (RT-029)
-- **What:** `ci.yml` and `release.yml` fail without the secret although all component repositories are public, so
-  Dependabot PRs (#19) can never pass, and the CI comments still say "private".
-- **Next step:** Make the token optional in both workflows and fix the comments (see #25).
-
 ### SRV-003 · Vulnerability scan of the image and its Python dependencies
 
 - **Priority:** P2 Medium · **Status:** Open · **Refs:** #26, backend audit D-06
 - **What:** CI scans the image only for secrets; resolved Python and OS packages are never audited. The same image
   definition serves Nodestro Local Docker.
 - **Next step:** Add `pip-audit` on `pinned.txt` and an OS-package scan of the saved image to CI and `release.yml`.
+- **Update 2026-11-03:** the base image's own pip and ensurepip wheel are removed (audit round 2 OPS2-07); a local
+  trivy run then shows 0 HIGH in Python packages and 48 Debian HIGH without a fix. CI still has no scan.
 
 ### SRV-004 · External security review before any production use
 
@@ -124,9 +119,19 @@ None known beyond the load test in SRV-013.
 
 ### SRV-009 · Dependabot: docker/setup-buildx-action 3 to 4
 
-- **Priority:** P3 Low · **Status:** Blocked (on SRV-002) · **Refs:** #19
+- **Priority:** P3 Low · **Status:** Open (CI needs no secret since 2026-11-03) · **Refs:** #19
 - **What:** Major version bump of an action; its `e2e` job fails only because the secret is missing.
-- **Next step:** Re-run after SRV-002, review the v4 changes, merge if green.
+- **Next step:** Re-run #19, review the v4 changes, merge if green.
+
+### SRV-021 · PostgreSQL upgrade test from the previous release in CI
+
+- **Priority:** P2 Medium · **Status:** Blocked (runtime OPS2-01 fix must reach the pinned studio) · **Refs:** backend
+  audit round 2 OPS2-01, OPS2-11; drill `backend-audit-2/work/ops/repro/upgrade/drill.sh` (internal)
+- **What:** No CI job upgrades a PostgreSQL database written by the previous release. The documented
+  `migrate --backup-dir` path deadlocked on databases from before migration checksums (fixed in nodestro-runtime,
+  OPS2-01), and nothing caught it. Nodestro Local Docker (SQLite) has such a test since 2026-11-03.
+- **Next step:** After the pin cascade, add an upgrade job (old image + data, new image, `migrate --backup-dir`,
+  restore of the old backup, rollback) on pin changes and weekly, like local-docker's `upgrade.yml`.
 
 ## Platform coverage
 
