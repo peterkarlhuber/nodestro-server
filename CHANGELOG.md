@@ -16,6 +16,8 @@
   RUNBOOK updated.
 - `studio.json` pins studio `b7c8af2` (merge commit of studio #111, UX round: frontend only; the backend pins of
   `997f485` are unchanged).
+- `studio.json` pins studio `6e94ae4` (merge commit of studio #112: nodestro-api `7c195ed`, nodestro-sdk `f44d156`).
+  Exporting a project no longer answers 500 because the image installs no test tools (nodestro-api #77).
 - New CI job `upgrade` (`.github/workflows/upgrade.yml`, `tests/e2e/test_upgrade.py`): the previous release
   (`tests/upgrade-from.json`, server `5bc7b82` of the `v0.2.0-preview.1` candidate, with its own compose file and
   image) gets data and a backup, then is upgraded as the RUNBOOK says (`migrate --backup-dir`, bounded in time so that
