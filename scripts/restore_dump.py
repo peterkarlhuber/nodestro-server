@@ -8,10 +8,11 @@ use it; docs/RUNBOOK.md describes the same steps.
 
 - Extensions (pgvector) are left out: a superuser installs them (``compose/postgres/roles.sql``), and the owner role
   may neither drop nor create them, so ``--clean`` would stop at ``DROP EXTENSION``.
-- Tables, views and sequences of the owner role that are not in the dump are dropped first: a newer release's
-  migrations created them (a rollback to the backup its ``migrate`` step wrote), and one that refers to a restored
-  table (a foreign key) would stop ``--clean`` from dropping that table's constraints. The database then holds exactly
-  the dump's tables, and a later upgrade migrates them again.
+- Tables, views and sequences of the owner role that are not in the dump are dropped first, but only in the schemas
+  the dump contains (a dump of one schema, ``NODESTRO_DATABASE_SCHEMA``, never touches the role's other schemas): a
+  newer release's migrations created them (a rollback to the backup its ``migrate`` step wrote), and one that refers
+  to a restored table (a foreign key) would stop ``--clean`` from dropping that table's constraints. The dump's
+  schemas then hold exactly the dump's tables, and a later upgrade migrates them again.
 - Both steps run in one transaction (``psql --single-transaction``): if any statement fails, nothing changes.
 
 The password goes to the tools in their environment, never on the command line.
@@ -33,13 +34,16 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 EXTENSION = re.compile(r"^\d+; \d+ \d+ (EXTENSION - |COMMENT - EXTENSION )")
 #: ``pg_restore --list`` lines of relations: ``<id>; <class> <oid> <TYPE> <schema> <name> <owner>``.
 RELATION = re.compile(r"^\d+; \d+ \d+ (TABLE|VIEW|MATERIALIZED VIEW|SEQUENCE) (\S+) (\S+) \S+$")
-#: Relations of the owner role outside the system schemas that are not part of an extension.
+#: ``pg_restore --list`` lines of schemas: ``<id>; <class> <oid> SCHEMA - <name> <owner>``.
+SCHEMA = re.compile(r"^\d+; \d+ \d+ SCHEMA - (\S+) \S+$")
+#: Relations of the owner role in the dump's schemas that are not part of an extension.
 OWNED = """
 SELECT n.nspname, c.relname, c.relkind
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S')
   AND pg_get_userbyid(c.relowner) = current_user
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_%%'
+  AND n.nspname = ANY(%s)
   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
                   AND d.deptype = 'e')
 ORDER BY n.nspname, c.relname
@@ -59,9 +63,11 @@ def main(dump: str) -> int:
     listing = subprocess.run(["pg_restore", "--list", dump], capture_output=True, text=True, check=True).stdout
     kept = [line for line in listing.splitlines() if not EXTENSION.match(line)]
     in_dump = {(match[2], match[3]) for line in kept if (match := RELATION.match(line))}
+    # Only the schemas the dump contains: a dump of one schema leaves the role's other schemas alone.
+    schemas = sorted({schema for schema, _ in in_dump} | {m[1] for line in kept if (m := SCHEMA.match(line))})
 
     with psycopg.connect(target, **({"password": str(password)} if password is not None else {})) as connection:
-        owned = connection.execute(OWNED).fetchall()
+        owned = connection.execute(OWNED, (schemas,)).fetchall()
         drops = [
             sql.SQL("DROP {} IF EXISTS {} CASCADE;")
             .format(sql.SQL(DROP[kind]), sql.Identifier(schema, name))

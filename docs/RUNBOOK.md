@@ -576,9 +576,14 @@ To restore:
    `/run/secrets/database_migration_url`). It does, in one transaction (`psql --single-transaction`):
    - leave the extensions (pgvector) out of `pg_restore --list` (the owner role cannot drop or create them, so
      `--clean` would stop at `DROP EXTENSION`);
-   - drop the owner role's tables, views and sequences that are not in the dump: a newer release's migrations created
-     them, and one with a foreign key to a restored table would stop `--clean`;
+   - drop the owner role's tables, views and sequences of the dump's schemas that are not in the dump (other schemas
+     are left alone): a newer release's migrations created them, and one with a foreign key to a restored table
+     would stop `--clean`;
    - apply `pg_restore --clean --if-exists --no-owner --use-list=<list> --file=- <dump>`.
+
+   Two lines `WARNING: no privileges were granted for "public"` are expected when the owner role does not own the
+   schema `public`: the dump repeats that schema's grants, which only its owner can give, and they stay as they are.
+   Step 4 grants the runtime role its privileges again.
 
    Use the image's `pg_restore` and `psql` (version 17, like its `pg_dump`). Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
