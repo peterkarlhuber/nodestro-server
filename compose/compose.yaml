@@ -70,7 +70,7 @@ services:
       retries: 30
 
   dex:
-    image: ghcr.io/dexidp/dex:v2.44.0
+    image: ghcr.io/dexidp/dex:v2.46.1
     restart: unless-stopped
     command: ["dex", "serve", "/etc/dex/config.yaml.tmpl"]
     env_file: [.secrets/dex.env]
