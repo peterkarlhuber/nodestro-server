@@ -3,7 +3,8 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-03 against `master` at `ac2ef9a` (close-out of the backend audit round 2).
+> **Last full review:** 2026-11-04 against `master` at `23fd4a2` (internal backend audit round 3; restore fix OPS3-01
+> and Dependabot coverage in the PR that updates this line).
 
 ## Summary
 
@@ -12,7 +13,7 @@
 | P0 Critical | 0 |
 | P1 High | 0 |
 | P2 Medium | 9 |
-| P3 Low | 7 |
+| P3 Low | 6 |
 | P4 Optional | 2 |
 
 **Release blockers:** None for this repository. No server release or production deployment is approved; the
@@ -124,12 +125,6 @@ The image definition here is shared with nodestro-local-docker by design; see it
   a tenant without a role, or that tool containers get no `AWS_*` variables.
 - **Next step:** Add the offline test described in #29.
 
-### SRV-009 · Dependabot: docker/setup-buildx-action 3 to 4
-
-- **Priority:** P3 Low · **Status:** Open (CI needs no secret since 2026-11-03) · **Refs:** #19
-- **What:** Major version bump of an action; its `e2e` job fails only because the secret is missing.
-- **Next step:** Re-run #19, review the v4 changes, merge if green.
-
 ## Platform coverage
 
 ### SRV-010 · Browsers against the server image
@@ -180,9 +175,11 @@ None known beyond SRV-007.
 ### SRV-015 · Development stack images by tag
 
 - **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit D-16
-- **What:** Dex and Docker-in-Docker in `compose/compose.yaml` are referenced by tag (documented in the README); the
-  image's own bases and PostgreSQL (`pgvector/pgvector:0.8.7-pg17`) are pinned by digest.
-- **Next step:** Pin them by digest and let Dependabot (docker ecosystem) keep them current, the PostgreSQL image too.
+- **What:** Dex in `compose/compose.yaml` is referenced by tag (documented in the README); the image's own bases, the
+  sandbox daemon's base (`compose/sandbox/Dockerfile`) and PostgreSQL (`pgvector/pgvector:0.8.7-pg17`) are pinned by
+  digest. Dependabot updates `compose/compose.yaml` and `compose/sandbox` (2026-11-04); it cannot update the `ARG` base
+  images of `image/Dockerfile` (`PYTHON_IMAGE`, `NODE_IMAGE`), which must follow by hand.
+- **Next step:** Pin Dex by digest; keep the `image/Dockerfile` bases in step with each Dependabot update.
 
 ### SRV-016 · Warn when the pinned studio falls behind
 
