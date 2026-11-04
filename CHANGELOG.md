@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Studio pin: backend audit round 3 and UX round 3 (2026-11-04)
+
+- Pins nodestro-studio 2c072d7 (studio #123, #124): nodestro-api 5ee13f7 (export jobs on a server only with the
+  operator opt-in `NODESTRO_SERVER_EXPORT_JOBS=1`, one build at a time, `NODESTRO_SERVER_EXPORT_MAX_BYTES`; tenants
+  without the `install` permission see no machine details in Local models), nodestro-runtime 40c8c06, orkexa
+  e9c2147, axentra 0a1d1cc (API keys answer 403 while their creator lacks the rights), nodestro-examples 64e534a,
+  nodestro-integrations 8687e09, nodestro-sdk abdf686.
+
 ### Studio pin: checked key figures (2026-11-04)
 
 - Pins nodestro-studio 0a6a320 (studio #120: key figures that a condition decides on or that report money or days must come from a tool, and the runtime checks them (`OutputField.source`, built-in `table_totals`); local Ollama agents with a structured result call their tools (orkexa #45, #46); production-downtime decides on the computed 4.62 % instead of an estimate).
