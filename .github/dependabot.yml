@@ -10,3 +10,18 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+  # Base images by tag and digest: the Docker-in-Docker sandbox, and the images compose/compose.yaml runs (pgvector,
+  # Python, Dex). The image's own bases (image/Dockerfile ARG PYTHON_IMAGE, NODE_IMAGE) are build arguments, which
+  # Dependabot does not update: change them together with compose.yaml's python image.
+  - package-ecosystem: docker
+    directory: /compose/sandbox
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+  - package-ecosystem: docker-compose
+    directory: /compose
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: nodestro-sandbox-dind # built locally from compose/sandbox
