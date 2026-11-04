@@ -581,6 +581,10 @@ To restore:
      would stop `--clean`;
    - apply `pg_restore --clean --if-exists --no-owner --use-list=<list> --file=- <dump>`.
 
+   Two lines `WARNING: no privileges were granted for "public"` are expected when the owner role does not own the
+   schema `public`: the dump repeats that schema's grants, which only its owner can give, and they stay as they are.
+   Step 4 grants the runtime role its privileges again.
+
    Use the image's `pg_restore` and `psql` (version 17, like its `pg_dump`). Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
