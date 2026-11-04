@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Studio pin: checked key figures (2026-11-04)
+
+- Pins nodestro-studio 0a6a320 (studio #120: key figures that a condition decides on or that report money or days must come from a tool, and the runtime checks them (`OutputField.source`, built-in `table_totals`); local Ollama agents with a structured result call their tools (orkexa #45, #46); production-downtime decides on the computed 4.62 % instead of an estimate).
+
 ### Studio pin: local AI follow-up (2026-11-04)
 
 - Pins nodestro-studio f9e4a91 (studio #118, #119): nodestro-runtime 7cb9b4b (in the CPU saving mode the quality judge
