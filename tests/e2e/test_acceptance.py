@@ -492,6 +492,12 @@ def test_backup_and_restore_with_pg_dump(tenants: Tenants) -> None:
         assert written.read_bytes().startswith(b"PGDMP")
         assert alice.delete(f"/api/workflows/{kept}").status_code == 204
         later = _workflow(alice, _flow("Written after the backup", "ALPHA"))
+        # A schema of the owner role that the dump does not contain (another installation's NODESTRO_DATABASE_SCHEMA,
+        # the operator's own tables): the restore drops the newer release's tables only in the dump's schemas.
+        psql(
+            "CREATE SCHEMA e2e_other AUTHORIZATION nodestro_owner; "
+            "CREATE TABLE e2e_other.kept (id int); ALTER TABLE e2e_other.kept OWNER TO nodestro_owner"
+        )
         restore = subprocess.run(
             ["bash", str(Path(__file__).resolve().parents[2] / "scripts" / "restore.sh"), str(written)],
             capture_output=True,
@@ -500,6 +506,10 @@ def test_backup_and_restore_with_pg_dump(tenants: Tenants) -> None:
             timeout=600,
         )
         assert restore.returncode == 0, restore.stdout + restore.stderr
+    try:
+        assert psql("SELECT to_regclass('e2e_other.kept') IS NOT NULL").strip() == "t", "the restore dropped e2e_other"
+    finally:
+        psql("DROP SCHEMA IF EXISTS e2e_other CASCADE")
     wait_healthy("api")
     wait_healthy("worker")
     assert alice.get(f"/api/workflows/{kept}").json()["name"] == "Kept by the backup"
