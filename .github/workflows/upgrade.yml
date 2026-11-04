@@ -17,6 +17,7 @@ on:
       - scripts/build-image.sh
       - scripts/dev-secrets.py
       - scripts/restore.sh
+      - scripts/restore_dump.py
       - .github/workflows/upgrade.yml
   push:
     branches: [master]
