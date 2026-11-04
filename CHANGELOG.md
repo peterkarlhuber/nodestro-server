@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Studio pin: local AI follow-up (2026-11-04)
+
+- Pins nodestro-studio f9e4a91 (studio #118, #119): nodestro-runtime 7cb9b4b (in the CPU saving mode the quality judge
+  of a local thinking model also answers without the thinking phase; a local model server gets 60 minutes per request
+  instead of the SDK's 10), nodestro-api 5951197, nodestro-examples 36488a6, nodestro-integrations 40d6053,
+  nodestro-sdk e58249b; orkexa stays at 4ec738c. The browser smoke test now covers the per-agent model plan and the
+  local hardware panel.
+
 ### Studio pin: local AI optimization (2026-11-03)
 
 - Pins nodestro-studio 74a9aa6 (studio #117): orkexa 4ec738c (robust hybrid fusion of knowledge search),
