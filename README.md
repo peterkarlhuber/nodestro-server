@@ -62,8 +62,8 @@ Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate b
 - The development stack is Linux-only (the server containers use the host's network). Production installations
   follow the runbook on any Docker host.
 - Dex and the model stub are for development and tests only.
-- The image's base images and the development stack's PostgreSQL (pgvector) image are pinned by digest; its Dex and
-  Docker-in-Docker images are referenced by tag.
+- The image's base images and every image of the development stack (PostgreSQL with pgvector, Dex, the
+  Docker-in-Docker base, Python) are pinned by digest.
 - No local model server: self-hosted model endpoints (Ollama, vLLM) are the operator's (`NODESTRO_MODEL_ENDPOINTS`).
 - The server's secret key cannot be rotated yet.
 
