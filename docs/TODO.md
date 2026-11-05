@@ -184,6 +184,8 @@ None known beyond SRV-007.
   (`python:3.13-slim` together with compose's Python image, `node:22-bookworm-slim`).
 - **Next step:** Refresh the two `ARG` digests with each Dependabot digest update of compose's Python image (same
   digest), or move them into `FROM` lines Dependabot can read.
+  `NODE_IMAGE` moves to Node.js 24 LTS together with the other repositories in Q1 2027 (owner decision
+  2026-11-05, nodestro-studio ST-054).
 
 ### SRV-016 · Warn when the pinned studio falls behind
 
