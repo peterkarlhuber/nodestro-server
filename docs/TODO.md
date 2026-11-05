@@ -3,8 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-04 against `master` at `23fd4a2` (internal backend audit round 3; restore fix OPS3-01
-> and Dependabot coverage in the PR that updates this line).
+> **Last full review:** 2026-11-05 against `master` at `a567530` (quality round 3 close-out; TODO consolidated).
 
 ## Summary
 
@@ -16,8 +15,9 @@
 | P3 Low | 6 |
 | P4 Optional | 2 |
 
-**Release blockers:** None for this repository. No server release or production deployment is approved; the
-`v0.2.0-preview.1` server candidate may be prepared, but publishing needs an explicit owner decision (SRV-001).
+**Release blockers:** None for this repository; no entry here blocks the next planned preview (the desktop
+candidate, nodestro-desktop DSK-001). No server release or production deployment is approved; a new server
+candidate may be prepared, but publishing needs an explicit owner decision (SRV-001, not a release blocker).
 
 The server image, compose stack, acceptance tests and runbook are in good shape for a supervised pilot on Linux
 amd64. For production use, the gaps are operational: vulnerability scans, consistent
@@ -41,8 +41,8 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs decision · **Refs:** RUNBOOK "Releases and rollback", project release notes 2026-10-31
 - **What:** The only server candidate (`v0.2.0-preview.1`, built 2026-10-31 from studio `78710ce`) predates the
   backend audit, Bedrock and Live Run Chat work and is outdated. Tags, GHCR pushes and releases are not approved.
-- **Next step:** After the next pin cascade, run `release.yml` again, record a Go/No-Go, and ask the owner whether to
-  publish. Do not run `publish.yml` without that approval.
+- **Next step:** From the current pins (studio `2c072d7`, server #53), run `release.yml` again, record a Go/No-Go,
+  and ask the owner whether to publish. Do not run `publish.yml` without that approval.
 
 ## Security
 
@@ -60,9 +60,12 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs external review · **Refs:** backend audit 2026-11-01 section 16
 - **What:** The backend audit was internal. No external penetration test of a server deployment (OIDC login, tenant
   isolation, sandbox daemon, Bedrock role assumption) has been done. MCP is accepted only for a read-only pilot, and
-  tool approvals (S-2) stay off outside an isolated pilot pending their own independent review.
-- **Next step:** Commission an external test of a deployment built from a current candidate; keep MCP write tools and
-  `NODESTRO_TOOL_APPROVALS` off until the respective reviews pass.
+  tool approvals (S-2) stay off outside an isolated pilot pending their own independent review (nodestro-runtime
+  RT-001). The Axentra switches wait for an external sign-off (nodestro-runtime RT-030, SRV-019), and the portable
+  export (nodestro-api #85, nodestro-studio #121, with the api #87 hardening) needs an independent review owned in
+  nodestro-api; server export jobs stay off by default (`NODESTRO_SERVER_EXPORT_JOBS`, API-048).
+- **Next step:** Commission an external test of a deployment built from a current candidate; keep MCP write tools,
+  `NODESTRO_TOOL_APPROVALS` and `NODESTRO_SERVER_EXPORT_JOBS` off until the respective reviews pass.
 
 ## Bugs and reliability
 
@@ -178,14 +181,16 @@ None known beyond SRV-007.
 - **What:** Dex in `compose/compose.yaml` is referenced by tag (documented in the README); the image's own bases, the
   sandbox daemon's base (`compose/sandbox/Dockerfile`) and PostgreSQL (`pgvector/pgvector:0.8.7-pg17`) are pinned by
   digest. Dependabot updates `compose/compose.yaml` and `compose/sandbox` (2026-11-04); it cannot update the `ARG` base
-  images of `image/Dockerfile` (`PYTHON_IMAGE`, `NODE_IMAGE`), which must follow by hand.
-- **Next step:** Pin Dex by digest; keep the `image/Dockerfile` bases in step with each Dependabot update.
+  images of `image/Dockerfile` (`PYTHON_IMAGE`, `NODE_IMAGE`), which must follow by hand. The first Dependabot PR
+  from that configuration (#52, Dex v2.44.0 to v2.46.1) is open.
+- **Next step:** Review #52; pin Dex by digest; keep the `image/Dockerfile` bases in step with each Dependabot update.
 
 ### SRV-016 · Warn when the pinned studio falls behind
 
 - **Priority:** P4 Optional · **Status:** Open · **Refs:** `studio.json`, backend audit D-01
-- **What:** `studio.json` now pins master merge commits (re-pinned with the Live Run Chat cascade), but CI checks only that
-  the pins resolve, not how far they lag behind the latest studio platform commit.
+- **What:** `studio.json` pins master merge commits (studio `2c072d7` since the round-3 cascade, server #53), but CI
+  checks only that the pins resolve, not how far they lag behind the latest studio platform commit (audit round 3
+  OPS3-06: the products were one cascade behind).
 - **Next step:** Add a CI warning for pin distance; keep pinning merge commits in every cascade.
 
 ## Later optimizations
@@ -221,6 +226,7 @@ None known beyond SRV-007.
 | – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
 | – | nodestro-api | API-008 (`check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES`) | Owned there |
 | – | nodestro-desktop | DSK-011 sync check of shared release scripts | This repo holds the source copies |
+| (pointer) | nodestro-api | API-048 (server export jobs: per-tenant quota, retention; document `NODESTRO_SERVER_EXPORT_JOBS` in the RUNBOOK) | Owned there; SRV-004 keeps the switch off |
 
 ## CI access to private repositories
 
