@@ -18,8 +18,8 @@ ARG PYTHON_VERSION=3.13
 # The base images by the digest of their multi-platform index, so that a rebuild of the same commits uses the same
 # operating system layers (amd64 and arm64). PYTHON_IMAGE must be PYTHON_VERSION (the stages check the paths). Update
 # both on purpose: docker buildx imagetools inspect python:3.13-slim (or node:22-bookworm-slim).
-ARG PYTHON_IMAGE=python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
-ARG NODE_IMAGE=node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
+ARG PYTHON_IMAGE=python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
 # ---- development only: wheels that replace pinned components (--build-context overrides=DIR) ------
 # Empty unless a build passes the context; release images never do (scripts/build-image.sh refuses it).

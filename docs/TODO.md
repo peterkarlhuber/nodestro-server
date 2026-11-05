@@ -175,15 +175,15 @@ None known beyond SRV-007.
   `studio.json` can differ.
 - **Next step:** Hashed constraints file next to `studio.json`, installed with `--require-hashes` (see #28).
 
-### SRV-015 · Development stack images by tag
+### SRV-015 · Image bases that Dependabot cannot update
 
-- **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit D-16
-- **What:** Dex in `compose/compose.yaml` is referenced by tag (documented in the README); the image's own bases, the
-  sandbox daemon's base (`compose/sandbox/Dockerfile`) and PostgreSQL (`pgvector/pgvector:0.8.7-pg17`) are pinned by
-  digest. Dependabot updates `compose/compose.yaml` and `compose/sandbox` (2026-11-04); it cannot update the `ARG` base
-  images of `image/Dockerfile` (`PYTHON_IMAGE`, `NODE_IMAGE`), which must follow by hand. The first Dependabot PR
-  from that configuration (#52, Dex v2.44.0 to v2.46.1) is open.
-- **Next step:** Review #52; pin Dex by digest; keep the `image/Dockerfile` bases in step with each Dependabot update.
+- **Priority:** P3 Low · **Status:** Open · **Refs:** backend audit D-16, `image/Dockerfile`, `.github/dependabot.yml`
+- **What:** Every image is pinned by digest since the dependency round of 2026-11-05 (Dex v2.46.1 from #52 now by
+  digest too). Dependabot keeps `compose/compose.yaml` and `compose/sandbox` current; it cannot update the `ARG` base
+  images of `image/Dockerfile` (`PYTHON_IMAGE`, `NODE_IMAGE`). They were refreshed by hand in the same round
+  (`python:3.13-slim` together with compose's Python image, `node:22-bookworm-slim`).
+- **Next step:** Refresh the two `ARG` digests with each Dependabot digest update of compose's Python image (same
+  digest), or move them into `FROM` lines Dependabot can read.
 
 ### SRV-016 · Warn when the pinned studio falls behind
 
@@ -215,6 +215,7 @@ None known beyond SRV-007.
 
 | This repo item | Other repo | Other item | Relation |
 |---|---|---|---|
+| (pointer) | nodestro-studio | ST-052 (Dependabot policy: weekly groups, cooldown, manual merge; auto-merge prerequisites) | Full entry in studio |
 | SRV-007 | nodestro-api | API-011 (observability, D-10) | Blocked by |
 | SRV-013 | nodestro-runtime, nodestro-api | RT-008, RT-009, RT-020, API-013, API-023 (C-14 store throughput, C-05 usage latency) | Load test runs here; results feed into |
 | SRV-014 | nodestro-runtime, nodestro-studio | RT-023, ST-028 (D-05) | One shared locking decision |
