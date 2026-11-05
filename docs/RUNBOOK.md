@@ -716,6 +716,7 @@ development stack only; it approves no switch for production.
   default 0.50; `NODESTRO_RUN_CHAT_MAX_QUESTIONS`, default 30; `NODESTRO_RUN_CHAT_MAX_INSTRUCTIONS` per orchestrator,
   default 20) and recorded in the usage log (`run_chat`). Runs started by schedules, batches, test series or APIs
   take instructions only when the workflow's orchestrator allows it (`live_steering: always`).
-- Not yet: rotation of `NODESTRO_SECRET_KEY` without Axentra (with Axentra: the keyring, see above); published workflow APIs on a server (calls are answered with 405);
-  batches and test series (their runs end on the workers, but the batch or series stays `running`, because the
-  API process that started it does not learn that they ended). Do not offer these as supported server functions.
+- Not yet: rotation of `NODESTRO_SECRET_KEY` without Axentra (with Axentra: the keyring, see above); published workflow APIs on a server (calls are answered with 405).
+  Batches and test series are driven by the API process that started them: it reads their runs, which the workers
+  execute, from the database every two seconds. If that API process stops, the batch or series stays `running`
+  until someone cancels it (no owner or lease yet); its runs themselves finish on the workers.

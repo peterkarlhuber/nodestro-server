@@ -41,7 +41,7 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs decision · **Refs:** RUNBOOK "Releases and rollback", project release notes 2026-10-31
 - **What:** The only server candidate (`v0.2.0-preview.1`, built 2026-10-31 from studio `78710ce`) predates the
   backend audit, Bedrock and Live Run Chat work and is outdated. Tags, GHCR pushes and releases are not approved.
-- **Next step:** From the current pins (studio `2c072d7`, server #53), run `release.yml` again, record a Go/No-Go,
+- **Next step:** From the current pins (studio `a1acb1b`, manual-findings cascade 2026-11-05), run `release.yml` again, record a Go/No-Go,
   and ask the owner whether to publish. Do not run `publish.yml` without that approval.
 
 ## Security
@@ -188,7 +188,7 @@ None known beyond SRV-007.
 ### SRV-016 · Warn when the pinned studio falls behind
 
 - **Priority:** P4 Optional · **Status:** Open · **Refs:** `studio.json`, backend audit D-01
-- **What:** `studio.json` pins master merge commits (studio `2c072d7` since the round-3 cascade, server #53), but CI
+- **What:** `studio.json` pins master merge commits (studio `a1acb1b` since the manual-findings cascade of 2026-11-05), but CI
   checks only that the pins resolve, not how far they lag behind the latest studio platform commit (audit round 3
   OPS3-06: the products were one cascade behind).
 - **Next step:** Add a CI warning for pin distance; keep pinning merge commits in every cascade.
@@ -222,7 +222,7 @@ None known beyond SRV-007.
 | SRV-003 | nodestro-local-docker | Image scan (same image definition) | Covers both |
 | SRV-016 | nodestro-desktop, nodestro-local-docker | DSK-013, LD-009 (pin distance warning) | Same check in all three |
 | – | nodestro-api / nodestro-runtime | API-005 / RT-010 (rotation of `NODESTRO_SECRET_KEY`) | Owned there; RUNBOOK limitation here |
-| – | nodestro-api | API-006, API-010 (server batches and test series stay `running`; published workflow APIs not served) | Owned there; RUNBOOK limitation here |
+| – | nodestro-api | API-006, API-010 (server batches and test series stay `running` when their API process stops; published workflow APIs not served) | Owned there; RUNBOOK limitation here |
 | – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
 | – | nodestro-api | API-008 (`check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES`) | Owned there |
 | – | nodestro-desktop | DSK-011 sync check of shared release scripts | This repo holds the source copies |
