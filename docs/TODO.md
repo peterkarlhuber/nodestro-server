@@ -41,7 +41,7 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs decision · **Refs:** RUNBOOK "Releases and rollback", project release notes 2026-10-31
 - **What:** The only server candidate (`v0.2.0-preview.1`, built 2026-10-31 from studio `78710ce`) predates the
   backend audit, Bedrock and Live Run Chat work and is outdated. Tags, GHCR pushes and releases are not approved.
-- **Next step:** From the current pins (studio `2c072d7`, server #53), run `release.yml` again, record a Go/No-Go,
+- **Next step:** From the current pins (studio `a1acb1b`, manual-findings cascade 2026-11-05), run `release.yml` again, record a Go/No-Go,
   and ask the owner whether to publish. Do not run `publish.yml` without that approval.
 
 ## Security
@@ -188,7 +188,7 @@ None known beyond SRV-007.
 ### SRV-016 · Warn when the pinned studio falls behind
 
 - **Priority:** P4 Optional · **Status:** Open · **Refs:** `studio.json`, backend audit D-01
-- **What:** `studio.json` pins master merge commits (studio `2c072d7` since the round-3 cascade, server #53), but CI
+- **What:** `studio.json` pins master merge commits (studio `a1acb1b` since the manual-findings cascade of 2026-11-05), but CI
   checks only that the pins resolve, not how far they lag behind the latest studio platform commit (audit round 3
   OPS3-06: the products were one cascade behind).
 - **Next step:** Add a CI warning for pin distance; keep pinning merge commits in every cascade.

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Studio pin: product findings of the manual review (2026-11-05)
+
+- Pins nodestro-studio a1acb1b (studio #127): nodestro-runtime 57b40d2 (the strict offline mode refuses cloud models
+  outside runs too; orchestrators with models without a reasoning effort; an expired budget decision ends a run
+  `failed`), nodestro-api f796916 (no price check in the strict offline mode; batches and test series on a server
+  follow their runs from the database), nodestro-examples f015a4d, nodestro-integrations 9a5c955, nodestro-sdk
+  8c4c9ff; UI texts and in-app docs without internal switch names.
+- RUNBOOK: batches and test series are no longer listed as unsupported; only a stopped API process still leaves one
+  `running` (API-006).
+
 ### Studio pin: backend audit round 3 and UX round 3 (2026-11-04)
 
 - Pins nodestro-studio 2c072d7 (studio #123, #124): nodestro-api 5ee13f7 (export jobs on a server only with the
