@@ -708,6 +708,17 @@ A release has three separate steps. Only the last two publish anything, and each
   and runs the acceptance tests there; arm64 counts as tested once that job has passed, and release candidates are
   still built for amd64 only.
 
+## Production example
+
+`compose/production.example.yaml` is an example of a production installation with Docker Compose, not a supported or
+tested deployment form: an external PostgreSQL 17 with pgvector, your own OpenID Connect provider over https, a remote
+sandbox Docker host over mutual TLS, Caddy as the TLS proxy (Let's Encrypt certificates, no access log, so setup links
+and sign-in codes are never logged by it; the only published ports), one API and two workers with memory, CPU and
+process limits, read-only root file systems and no capabilities, and `migrate` as a one-off command (`docker compose
+run --rm migrate`, before the first start and after every image update). Its header lists the settings and files it
+needs. CI only checks that it is a valid compose file. A Helm chart does not exist; which deployment forms are
+supported is still to be decided.
+
 ## Development stack (Linux)
 
 ```sh

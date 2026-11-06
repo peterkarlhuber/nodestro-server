@@ -40,6 +40,13 @@ jobs:
           NODESTRO_EXTRA_CA_FILE=/etc/ssl/certs/ca-certificates.crt \
             docker compose -f compose/compose.yaml -f compose/extra-ca.yaml config --quiet
           docker compose -f compose/compose.yaml -f compose/all-switches.yaml config --quiet
+          # The production example (not a tested deployment form): valid with the settings it requires.
+          mkdir -p compose/secrets
+          for name in database_url database_migration_url oidc_client_secret secret_key; do echo x > "compose/secrets/$name"; done
+          NODESTRO_IMAGE=nodestro-server@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            NODESTRO_HOST=studio.example.com NODESTRO_OIDC_ISSUER=https://login.example.com NODESTRO_OIDC_CLIENT_ID=studio \
+            NODESTRO_SANDBOX_HOST=tcp://sandbox.example.com:2376 \
+            docker compose -f compose/production.example.yaml config --quiet
       - name: Base images are pinned by digest
         run: |
           python3 -I - <<'PY'

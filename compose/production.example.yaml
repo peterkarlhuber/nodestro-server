@@ -1,0 +1,128 @@
+# An EXAMPLE of a production installation with Docker Compose (docs/RUNBOOK.md, "Production example"). Not a
+# supported or tested deployment form yet: adapt it, and test it on your own hosts before you trust it.
+#
+# What it shows, beyond the development stack:
+# - an external PostgreSQL 17 (with pgvector): no database container here; back it up with your own tooling or
+#   `nodestro-server backup` (RUNBOOK, "Backup and restore");
+# - your own OpenID Connect provider (https) and a remote sandbox Docker host over mutual TLS (RUNBOOK, "The sandbox
+#   daemon"): never the host's own Docker socket;
+# - a TLS proxy (Caddy, certificates from Let's Encrypt; no access log, so setup links and sign-in codes are never
+#   logged by it), the only published ports;
+# - resource limits, a read-only root file system and no capabilities for every Nodestro container; one API, two
+#   workers; migrations as a one-off command.
+#
+#   cp compose/production.example.yaml /srv/nodestro/compose.yaml   # and the files it names, see "secrets" below
+#   docker compose --env-file nodestro.env run --rm migrate          # first, and after every image update
+#   docker compose --env-file nodestro.env up -d --wait
+#
+# nodestro.env names the image and the hosts, for example:
+#   NODESTRO_IMAGE=registry.example.com/nodestro-server@sha256:<digest>   (deploy by digest, RUNBOOK "Releases")
+#   NODESTRO_HOST=studio.example.com
+#   NODESTRO_OIDC_ISSUER=https://login.example.com/realms/nodestro
+#   NODESTRO_OIDC_CLIENT_ID=nodestro-studio
+#   NODESTRO_SANDBOX_HOST=tcp://sandbox.internal.example.com:2376
+name: nodestro
+
+x-nodestro: &nodestro
+  image: ${NODESTRO_IMAGE:?NODESTRO_IMAGE names the server image, by digest}
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=256m,mode=1777"]
+  networks: [nodestro]
+  environment: &nodestro-environment
+    NODESTRO_PROFILE: server
+    NODESTRO_PUBLIC_ORIGIN: https://${NODESTRO_HOST:?NODESTRO_HOST is the studio's host name}
+    NODESTRO_OIDC_ISSUER: ${NODESTRO_OIDC_ISSUER:?NODESTRO_OIDC_ISSUER is the identity provider (https)}
+    NODESTRO_OIDC_CLIENT_ID: ${NODESTRO_OIDC_CLIENT_ID:?NODESTRO_OIDC_CLIENT_ID is the studio's client}
+    NODESTRO_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+    NODESTRO_DATABASE_URL_FILE: /run/secrets/database_url # the runtime role nodestro_app (RUNBOOK, "Database roles")
+    NODESTRO_SECRET_KEY_FILE: /run/secrets/secret_key
+    NODESTRO_MODEL_ENDPOINTS: ${NODESTRO_MODEL_ENDPOINTS:-}
+    NODESTRO_DATABASE_POOL_SIZE: "8"
+    DOCKER_HOST: ${NODESTRO_SANDBOX_HOST:?NODESTRO_SANDBOX_HOST is the sandbox Docker host, tcp://...:2376}
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /run/sandbox-certs
+  secrets: [database_url, oidc_client_secret, secret_key]
+  volumes:
+    - data:/var/lib/nodestro
+    - ./sandbox-certs:/run/sandbox-certs:ro # ca.pem, cert.pem, key.pem of the sandbox host's client certificate
+
+services:
+  # One-off: `docker compose run --rm migrate` as the owner role nodestro_owner; takes a pg_dump into the data volume
+  # before it changes anything. Not started by `up` (profile).
+  migrate:
+    <<: *nodestro
+    profiles: [migrate]
+    restart: "no"
+    command: ["migrate", "--backup-dir", "/var/lib/nodestro/backups"]
+    environment:
+      <<: *nodestro-environment
+      NODESTRO_DATABASE_MIGRATION_URL_FILE: /run/secrets/database_migration_url
+    secrets: [database_url, database_migration_url, oidc_client_secret, secret_key]
+
+  api:
+    <<: *nodestro
+    command: ["api", "--host", "0.0.0.0", "--port", "8080"] # reachable only on the internal network, by the proxy
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+
+  worker:
+    <<: *nodestro
+    command: ["worker"]
+    deploy:
+      replicas: 2
+    mem_limit: 4g
+    cpus: 2
+    pids_limit: 1024
+    stop_grace_period: 10m # workers finish their current run step on SIGTERM (RUNBOOK, "Upgrade")
+    healthcheck:
+      test: ["CMD", "nodestro-server", "check", "--skip-identity-provider"]
+      interval: 30s
+      timeout: 20s
+      start_period: 60s
+      retries: 5
+
+  proxy:
+    image: caddy:2.11.1-alpine@sha256:3b2a0196e0687279c14c27adff9fc6b44acfa318dbb97eaebe385bdf99e5364c
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    networks: [nodestro]
+    ports: ["443:443", "80:80"]
+    environment:
+      NODESTRO_HOST: ${NODESTRO_HOST}
+    # Without --access-log Caddy writes no access log, so the query strings of /api/auth/ and /api/mcp/oauth/callback
+    # (setup links, sign-in codes) are never logged here. Caddy streams event-stream responses (run events) unbuffered.
+    command: ["caddy", "reverse-proxy", "--from", "${NODESTRO_HOST}", "--to", "api:8080"]
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 256m
+    pids_limit: 128
+    depends_on:
+      api: {condition: service_healthy}
+
+networks:
+  nodestro: {}
+
+secrets:
+  database_url: {file: ./secrets/database_url} # nodestro_app; host=... port=5432 user=nodestro_app dbname=nodestro password=... sslmode=verify-full
+  database_migration_url: {file: ./secrets/database_migration_url} # nodestro_owner: migrate, backup, restore only
+  oidc_client_secret: {file: ./secrets/oidc_client_secret}
+  secret_key: {file: ./secrets/secret_key} # openssl rand -base64 32; keep a copy outside this host
+
+volumes:
+  data: # the tenants' files (NODESTRO_DATA_DIR); back it up with the database (RUNBOOK, "Backup and restore")
+  caddy-data:
+  caddy-config:
