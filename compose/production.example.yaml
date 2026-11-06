@@ -65,6 +65,13 @@ services:
   api:
     <<: *nodestro
     command: ["api", "--host", "0.0.0.0", "--port", "8080"] # reachable only on the internal network, by the proxy
+    environment:
+      <<: *nodestro-environment
+      # Client addresses behind the proxy (RUNBOOK, "Client addresses behind a reverse proxy"): the API takes the
+      # client address from X-Forwarded-For only for requests from the proxy's fixed address below; otherwise every
+      # client would share the proxy's address and its login and API key limits.
+      NODESTRO_BEHIND_PROXY: "1"
+      FORWARDED_ALLOW_IPS: 172.31.240.10
     mem_limit: 2g
     cpus: 2
     pids_limit: 512
@@ -98,7 +105,9 @@ services:
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]
     security_opt: ["no-new-privileges:true"]
-    networks: [nodestro]
+    networks:
+      nodestro:
+        ipv4_address: 172.31.240.10 # FORWARDED_ALLOW_IPS of the api service
     ports: ["443:443", "80:80"]
     environment:
       NODESTRO_HOST: ${NODESTRO_HOST}
@@ -114,7 +123,10 @@ services:
       api: {condition: service_healthy}
 
 networks:
-  nodestro: {}
+  nodestro:
+    ipam:
+      config:
+        - subnet: 172.31.240.0/24 # a fixed address for the proxy; pick a range that is free on your hosts
 
 secrets:
   database_url: {file: ./secrets/database_url} # nodestro_app; host=... port=5432 user=nodestro_app dbname=nodestro password=... sslmode=verify-full

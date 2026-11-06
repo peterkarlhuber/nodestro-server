@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Operations: MUP-ONA security documentation
+
+- RUNBOOK "Client addresses behind a reverse proxy" (MUP-ONA A3, PS-3): `NODESTRO_BEHIND_PROXY`,
+  `FORWARDED_ALLOW_IPS` and `NODESTRO_REQUIRE_CLIENT_ADDRESS`, what `check` and `api` report, `X-Forwarded-For` in
+  nginx, Caddy and Traefik, the per-key count of failed published API keys and the accepted residual risk.
+  `compose/production.example.yaml` gives Caddy a fixed address and sets `FORWARDED_ALLOW_IPS` and
+  `NODESTRO_BEHIND_PROXY=1` for the API. The new variables take effect with the studio pin that contains
+  nodestro-api MUP-ONA A3.
 ### Studio pin: TODO abatement round 2 (2026-11-06)
 
 - Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant

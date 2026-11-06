@@ -97,6 +97,9 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_RUN_THREADS` | Threads for agents and orchestrator decisions of one tenant in one process (default 32); an agent beyond the limit waits for a thread |
 | `NODESTRO_DATA_DIR` | Files of the tenants (`/var/lib/nodestro` in the image): a shared volume for API and workers |
 | `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` | The sandbox daemon (TLS with client certificates) |
+| `NODESTRO_BEHIND_PROXY` | `1`: the API runs behind a reverse proxy, so `FORWARDED_ALLOW_IPS` must be set. See [Client addresses behind a reverse proxy](#client-addresses-behind-a-reverse-proxy) |
+| `FORWARDED_ALLOW_IPS` | uvicorn's list of proxy addresses (comma-separated IP addresses or networks) whose `X-Forwarded-For` the API trusts; default `127.0.0.1`. Never `*` where others can reach the API port |
+| `NODESTRO_REQUIRE_CLIENT_ADDRESS` | `1`: `check` and `api` refuse to start (`proxy.client_address_unknown`) when `NODESTRO_BEHIND_PROXY=1` and `FORWARDED_ALLOW_IPS` is not set, instead of only warning |
 | `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE`, `AWS_CA_BUNDLE` | Only behind a TLS-inspecting proxy: its certificate bundle. The AWS SDK (Bedrock, STS) ignores `SSL_CERT_FILE` and reads only `AWS_CA_BUNDLE`; `compose/extra-ca.yaml` sets all three |
 
 `nodestro-server check` validates these settings, the database (role and schema), the container runtime and the
@@ -472,7 +475,52 @@ address can start up to N × the limit. Keep the rate limit on the reverse proxy
 `X-Forwarded-For` only from the addresses in `FORWARDED_ALLOW_IPS` (default `127.0.0.1`). When the proxy runs
 in another container or host, set `FORWARDED_ALLOW_IPS` to the proxy's address (never `*` on a network others can
 reach). Otherwise every request seems to come from the proxy, and the login rate limit applies to all users
-together.
+together. Set `NODESTRO_BEHIND_PROXY=1` as well, so the server reports a missing `FORWARDED_ALLOW_IPS`; details and
+the examples for nginx, Caddy and Traefik are in the next section.
+
+## Client addresses behind a reverse proxy
+
+The API limits some requests per client address: login starts (`NODESTRO_LOGIN_STARTS_PER_MINUTE`) and failed API
+keys of published workflow APIs. Behind a reverse proxy the API sees the proxy's address unless the proxy passes
+the client's address in `X-Forwarded-For` **and** the API trusts that header from the proxy. Then one client that
+uses up its budget would lock out every other client.
+
+| Variable | Set it to |
+| --- | --- |
+| `NODESTRO_BEHIND_PROXY` | `1` whenever a reverse proxy or load balancer forwards to the API |
+| `FORWARDED_ALLOW_IPS` | the address(es) from which the proxy connects to the API, comma-separated (IP addresses or networks such as `10.0.5.0/28`); only those may set the client address. Default `127.0.0.1` (a proxy on the same host). Never `*` where other hosts or containers can reach the API port: anyone could then claim any address |
+| `NODESTRO_REQUIRE_CLIENT_ADDRESS` | `1` to make a missing `FORWARDED_ALLOW_IPS` stop the start instead of a warning |
+
+With `NODESTRO_BEHIND_PROXY=1` and no `FORWARDED_ALLOW_IPS`, `nodestro-server check` prints
+`warning: proxy.client_address_unknown: …` and `nodestro-server api` logs the same warning and starts; with
+`NODESTRO_REQUIRE_CLIENT_ADDRESS=1` both stop with that code (`check` as `not ready`). The check cannot see whether the
+addresses in `FORWARDED_ALLOW_IPS` are the right ones: after a change, log in once and look for your own address (not
+the proxy's) in the API's access log. The variables need nodestro-api with MUP-ONA A3 (the studio pin after it);
+`FORWARDED_ALLOW_IPS` works with every version.
+
+The proxy must replace or append to `X-Forwarded-For`, never pass a client's header through unchanged when it is the
+first hop:
+
+- **nginx:** `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` as in the example of
+  [TLS reverse proxy](#tls-reverse-proxy). When nginx is the first hop, `$remote_addr` is the client; behind a load
+  balancer, set `set_real_ip_from <load balancer>;` and `real_ip_header X-Forwarded-For;` so `$remote_addr` (and the
+  appended address) is the client's.
+- **Caddy:** `reverse_proxy` sets `X-Forwarded-For` by itself (the production example's `caddy reverse-proxy`
+  does). It trusts incoming forwarding headers only from `trusted_proxies` (global `servers` option); leave it unset
+  when Caddy is the first hop.
+- **Traefik:** forwards `X-Forwarded-For` by itself. Incoming forwarding headers are trusted only from
+  `entryPoints.<name>.forwardedHeaders.trustedIPs`; set it only to an upstream load balancer, never
+  `insecure: true`.
+
+`FORWARDED_ALLOW_IPS` then names the address the proxy connects from: `127.0.0.1` on the same host, the proxy
+container's address in a compose network (`compose/production.example.yaml` gives Caddy a fixed address for this),
+or the proxy hosts' addresses. Published API keys: failures of a well-formed key are counted per key id (its first 8
+characters, never the secret) and only with a ten times higher limit per address, so a client's wrong key does not
+throttle other keys even when every request has the proxy's address.
+
+Residual risk (accepted): an operator who ignores the warning runs with shared per-address limits; one client can
+then exhaust the login start budget of everyone behind the proxy for up to a minute. Keep the proxy's own rate limit
+for `/api/auth/` (see above) as the first line.
 
 ## Run budget decisions
 
