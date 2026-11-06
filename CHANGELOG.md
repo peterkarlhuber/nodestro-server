@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Operations: TODO abatement round (2026-11-06)
+
+- CI and `release.yml` scan the server image and the `local` image for known vulnerabilities
+  (`scripts/scan-vulnerabilities.sh`: pip-audit on `pinned.txt`, Trivy on the saved image by digest); any Python
+  vulnerability and any fixable HIGH or CRITICAL OS finding fails the build; the reports are kept as artifacts.
+- `scripts/backup.sh` takes the database and the data volume at one point in time (API and worker stopped) with a
+  manifest of SHA-256 checksums; `scripts/restore.sh` restores a manifest (database, data volume, `files verify`
+  for Axentra's storage) after checking every checksum, or a dump as before.
+- New acceptance tests: a paired backup restores the tenants' files; Bedrock is unavailable without an operator role
+  although the server has AWS credentials, and tool containers get no AWS variables; a tenant's semantic index is
+  built through an embedding endpoint (the model stub now answers Ollama's `/api/embed`) and searched with pgvector.
+- CI runs the acceptance tests on Linux arm64 too, warns when the studio pin lags behind studio master
+  (`scripts/pin_distance.py`), and validates `compose/production.example.yaml`, a production example (not a supported
+  deployment form; RUNBOOK "Production example").
+- The image's base images are `FROM` lines that Dependabot updates; the release manifest lists bundled binaries
+  (the docker CLI) with their licenses.
+- `tests/e2e/load.py`: a load test of the development stack (RUNBOOK "Load test").
+
 ### Studio pin: settings, attachments and providers (2026-11-06)
 
 - Pins nodestro-studio 58bb17d (studio #135): orkexa 566aa3c (model limits, live reasoning, resumable local setup,
