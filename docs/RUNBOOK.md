@@ -459,9 +459,20 @@ a different value can break the studio. With an older pinned studio, add at leas
 
 Bind the API to `127.0.0.1` or a private network (`nodestro-server api --host 127.0.0.1`); never publish port 8080.
 
-The server has no rate limit for logins of its own, so a rate limit for `/api/auth/` in the proxy is still advisable
+The server limits login starts per API process (see "Login rate limit" below); a rate limit for `/api/auth/` in the proxy is still advisable
 (for nginx: a `limit_req_zone` in the `http` block and `limit_req` in the `location /api/auth/` above). The server serves the studio gzip-compressed, with long-lived immutable caching for the
 content-hashed files under `/assets` and `no-cache` for `index.html`, so the proxy need not compress it.
+
+**Login rate limit.** Each API process lets one client address start at most 60 logins per minute
+(`NODESTRO_LOGIN_STARTS_PER_MINUTE`, default `60`; `0` turns the limit off). Further starts get
+`429 identity.rate_limited` until the minute has passed. The limit counts per process, so with N API processes an
+address can start up to N × the limit. Keep the rate limit on the reverse proxy as the first line of defense.
+
+**Client addresses behind the proxy.** `nodestro-server api` runs uvicorn with proxy headers on, but uvicorn trusts
+`X-Forwarded-For` only from the addresses in `FORWARDED_ALLOW_IPS` (default `127.0.0.1`). When the proxy runs
+in another container or host, set `FORWARDED_ALLOW_IPS` to the proxy's address (never `*` on a network others can
+reach). Otherwise every request seems to come from the proxy, and the login rate limit applies to all users
+together.
 
 ## Run budget decisions
 
@@ -512,6 +523,19 @@ The worker has no HTTP port and exposes no metrics of its own; its work shows in
 ids (never keys), stored secrets by format, the identity backend and whether it would start, and the reconcile
 backlog. Run events and their live streams are unchanged; they are not notifications.
 
+`GET /api/ready` (no login) answers `200 {"status": "ready"}` only while the API process serves and reaches its
+database, and `503` while it starts, stops or loses the database: use it as the load balancer's readiness check
+and `/api/health` as the liveness check. Every answer carries `X-Request-ID` (a short id from the proxy is kept),
+and the log lines of that request name it. `NODESTRO_LOG_FORMAT=json` writes one JSON object per log line
+(`time`, `level`, `logger`, `message`, `request_id`, `exception`) for `api` and `worker`.
+
+Batches and test series: the API process that runs one holds a 60-second lease. After an API process stopped,
+its running batches show `interrupted` once their lease ran out; a member continues them in the studio.
+
+Access audit: tenant admins read logins, API key changes and the operator's commands (`create-tenant`,
+`set-role`, `remove-member`, `revoke-sessions`, `tenant suspend|resume`, recorded with the actor `operator`) at
+`GET /api/access-audit`. With `NODESTRO_AXENTRA_AUDIT=1` they are also mirrored into Axentra's audit log.
+
 ## The sandbox daemon
 
 Tool code, including code written by the Workflow Architect or the Assistant, is untrusted. The server runs it only
@@ -546,12 +570,25 @@ next use, which needs the package index.
 
 ## Backup and restore
 
-Back up two things together: the database and the data volume (`NODESTRO_DATA_DIR`, the tenants' files).
+Back up two things together, from the same point in time: the database and the data volume (`NODESTRO_DATA_DIR`,
+the tenants' files, such as their input files). A dump and an archive taken while the API and the workers keep
+writing do not match: a file uploaded between the two is in one and not in the other. Take a paired backup with
+nothing running that writes:
 
-```sh
-nodestro-server backup /backups          # pg_dump, custom format: /backups/nodestro-<time>.dump
-tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
-```
+1. Stop the API and all workers (a maintenance window; runs in progress are interrupted and can be continued
+   afterwards, see [Upgrade](#upgrade)).
+2. `nodestro-server backup /backups` (pg_dump, custom format: `/backups/nodestro-<time>.dump`).
+3. `tar -C /var/lib/nodestro --exclude=./backups -czf /backups/nodestro-data-<time>.tar.gz .` (the data volume
+   without the pre-migration dumps of `migrate --backup-dir`).
+4. Record the files with their SHA-256 sums together, then start the API and the workers again.
+
+`scripts/backup.sh DIR` does these steps for the development stack and writes `nodestro-backup-<time>.json` (the
+dump, the data archive and the storage archive below, each with size and SHA-256, the image ID and the time);
+`scripts/restore.sh DIR/nodestro-backup-<time>.json` checks every checksum before it changes anything and restores
+the database and the data volume. The end-to-end test `test_a_paired_backup_restores_the_database_and_the_tenant_files`
+runs both: an input file deleted after the backup is back with its bytes, one uploaded after it is gone. A
+file system snapshot of the volume (LVM, ZFS, a cloud disk) taken while the API and the workers are stopped works the
+same way and shortens the window.
 
 With `NODESTRO_FILES_BACKEND=axentra` input file bytes live in Axentra's storage. On the local backend `backup` also
 writes `/backups/nodestro-files-<time>.tar.gz` of `storage.local_path` (after the dump; uploads in progress left
@@ -588,12 +625,14 @@ To restore:
    Use the image's `pg_restore` and `psql` (version 17, like its `pg_dump`). Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
-3. Restore the data volume from the archive of the same time.
+3. Restore the data volume from the archive of the same backup: remove its contents (keep `backups/` if you want
+   the pre-migration dumps) and unpack the archive as the image's user (10001).
 4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first; the runtime role is granted its
    privileges again), then start the API and the workers. Into a new database server: create the roles first.
 
-`scripts/restore.sh DUMP` does steps 1, 2 and 4 for the development stack; the end-to-end tests restore a backup
-this way.
+`scripts/restore.sh MANIFEST` does steps 1 to 4 for the development stack (with `files verify` when the backup has a
+storage archive); `scripts/restore.sh DUMP` restores a dump alone (steps 1, 2 and 4). The end-to-end tests restore
+backups both ways.
 
 ## Upgrade
 
@@ -617,6 +656,28 @@ it; workers drain their current run on SIGTERM (give them a stop timeout longer 
 reaper also marks a run as interrupted that is stored as queued or running without an active job, once it has not
 changed for twice the lease (120 seconds with the default `NODESTRO_WORKER_LEASE_SECONDS`).
 
+**Owners of older assistant conversations.** Conversations created before conversations had an owner are visible
+to the whole tenant. Run `nodestro-server assistant backfill-owners --dry-run` to see which ones get an owner (the
+user who attached their files), then `nodestro-server assistant backfill-owners` (optionally `--tenant TENANT`).
+Conversations without a known author stay visible to the tenant. The command is idempotent.
+
+## Load test
+
+`tests/e2e/load.py` loads a running development stack: `--tenants` new tenants start `--runs` runs each from
+`--concurrency` threads against the model stub, with `--workers` worker processes, while the runs and usage views are
+read; it prints run throughput, start latency, run duration and the list and usage latency as percentiles
+(`--json FILE` keeps the report). Start the stack with `KEEP_STACK=1 scripts/e2e.sh -k test_the_configured_server_is_ready`
+(or `docker compose up -d --wait`), then for example `python3 tests/e2e/load.py --tenants 4 --runs 50 --concurrency 24
+--workers 3`. The model stub answers at once, so the figures are those of the API, the workers and PostgreSQL.
+
+Measured only on a development machine so far, **not on target hardware** (2026-11-06, studio 58bb17d, 4 shared
+virtual CPUs, the whole stack on the same machine, an otherwise busy host): 200 runs of 4 tenants with 3 workers and 24
+concurrent clients all succeeded in 15.5 s (12.9 runs per second); start p50 0.29 s and p99 1.0 s, start to finished
+p50 1.6 s and p99 4.8 s; `GET /api/runs` p50 0.06 s and p99 0.28 s and `GET /api/usage` p50 0.06 s and p99 0.53 s while
+the runs were going, both about 0.015 s afterwards. Before a production pilot, run it on the target hardware with
+realistic tenant, run and worker numbers and a database that already holds months of runs (`/api/usage` grows with the
+number of runs).
+
 ## System requirements (tested)
 
 What the acceptance tests ran on. Anything else is untested, not unsupported by design.
@@ -636,7 +697,8 @@ A release has three separate steps. Only the last two publish anything, and each
 1. **Candidate** (`.github/workflows/release.yml`, run by hand with the version, for example `v0.2.0-preview.1`): it
    builds the image from `studio.json` with the version in its labels, runs every acceptance test against it, saves
    it, scans the saved image and the release files for secrets (`scripts/scan_secrets.py`, including the build
-   token's exact value) and writes `release-manifest.json` and `SHA256SUMS`. The run's `release-candidate`
+   token's exact value), scans the image for known vulnerabilities (`scripts/scan-vulnerabilities.sh`, see below) and
+   writes `release-manifest.json` and `SHA256SUMS`. The run's `release-candidate`
    artifact holds the saved image and those files. It pushes nothing and its token can only read.
 2. **Publish** (`.github/workflows/publish.yml`, run by hand with the candidate's run ID, the version and the
    confirmation `publish <version>`): it checks that the run is a passed candidate on master, the checksums, the
@@ -653,6 +715,15 @@ A release has three separate steps. Only the last two publish anything, and each
 - Images are **not signed** (no signing key is configured); the manifest says `"status": "unsigned"` and the image
   carries the labels `dev.nodestro.signing=unsigned` and `dev.nodestro.channel`. Preview versions are not meant for
   production data.
+- Vulnerability scans: `scripts/scan-vulnerabilities.sh IMAGE [REPORT_DIR]` audits the image's Python packages
+  (its pip freeze `/opt/nodestro/pinned.txt`, without the Nodestro components from git) with `pip-audit` and its
+  operating system packages and binaries with Trivy (`scripts/scanner/Dockerfile`, pinned by digest, kept current by
+  Dependabot) on the saved image. Any known Python vulnerability fails it, and so does a HIGH or CRITICAL finding
+  that has a fixed version; findings without a fix (most of them in Debian packages of the base image) are listed in
+  the reports only and go away with a base image refresh. Accepted findings go into
+  `scripts/vulnerability-allow.txt` with their reason. CI scans both images (server and `local`) on every change and
+  keeps the reports as the `vulnerability-reports` artifact; the candidate puts them into `release/vulnerabilities/`
+  (they are not published).
 - Rollback:
   1. Stop the API and the workers.
   2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and
@@ -662,8 +733,20 @@ A release has three separate steps. Only the last two publish anything, and each
      restore into a new, empty database instead (created by the owner role like the original, the roles already
      exist) and point `NODESTRO_DATABASE_URL` and `NODESTRO_DATABASE_MIGRATION_URL` at it.
   3. Start the previous image's `migrate`, then its API and workers.
-- Supported: linux/amd64 images (the e2e tests run on that platform only). The Dockerfile also has an arm64 docker
-  CLI checksum, but no arm64 image is built or tested.
+- Supported: linux/amd64 images. The CI job `e2e-arm64` (added 2026-11-06) builds the image on a Linux arm64 runner
+  and runs the acceptance tests there; arm64 counts as tested once that job has passed, and release candidates are
+  still built for amd64 only.
+
+## Production example
+
+`compose/production.example.yaml` is an example of a production installation with Docker Compose, not a supported or
+tested deployment form: an external PostgreSQL 17 with pgvector, your own OpenID Connect provider over https, a remote
+sandbox Docker host over mutual TLS, Caddy as the TLS proxy (Let's Encrypt certificates, no access log, so setup links
+and sign-in codes are never logged by it; the only published ports), one API and two workers with memory, CPU and
+process limits, read-only root file systems and no capabilities, and `migrate` as a one-off command (`docker compose
+run --rm migrate`, before the first start and after every image update). Its header lists the settings and files it
+needs. CI only checks that it is a valid compose file. A Helm chart does not exist; which deployment forms are
+supported is still to be decided.
 
 ## Development stack (Linux)
 
@@ -718,5 +801,6 @@ development stack only; it approves no switch for production.
   take instructions only when the workflow's orchestrator allows it (`live_steering: always`).
 - Not yet: rotation of `NODESTRO_SECRET_KEY` without Axentra (with Axentra: the keyring, see above); published workflow APIs on a server (calls are answered with 405).
   Batches and test series are driven by the API process that started them: it reads their runs, which the workers
-  execute, from the database every two seconds. If that API process stops, the batch or series stays `running`
-  until someone cancels it (no owner or lease yet); its runs themselves finish on the workers.
+  execute, from the database every two seconds, and holds a 60-second lease on it. If that API process stops, the
+  batch or series shows `interrupted` once the lease ran out and a member continues it; its runs themselves finish
+  on the workers.

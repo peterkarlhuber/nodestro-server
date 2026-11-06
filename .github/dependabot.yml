@@ -15,9 +15,22 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
-  # Base images by tag and digest: the Docker-in-Docker sandbox, and the images compose/compose.yaml runs (pgvector,
-  # Python, Dex). The image's own bases (image/Dockerfile ARG PYTHON_IMAGE, NODE_IMAGE) are build arguments, which
-  # Dependabot does not update: change them together with compose.yaml's python image.
+  # Base images by tag and digest: the image's own bases (image/Dockerfile), the Docker-in-Docker sandbox, and the
+  # images compose/compose.yaml runs (pgvector, Python, Dex).
+  - package-ecosystem: docker
+    directory: /image
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 2
+    ignore:
+      # Python stays 3.13 (PYTHON_VERSION in image/Dockerfile and the studio's support range); Node.js stays 22 until
+      # the planned move to Node.js 24 (Q1 2027). Digest updates of the same tags still come.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /compose/sandbox
     schedule:
@@ -25,6 +38,14 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 2
+  # The vulnerability scanner (Trivy) of scripts/scan-vulnerabilities.sh, by tag and digest.
+  - package-ecosystem: docker
+    directory: /scripts/scanner
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 1
   - package-ecosystem: docker-compose
     directory: /compose
     schedule:

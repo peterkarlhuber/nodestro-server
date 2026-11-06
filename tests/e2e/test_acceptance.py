@@ -9,9 +9,12 @@ Every test drives the running stack from the outside (see conftest.py):
   all while that daemon is down; tenants reach only the model endpoints the operator allowed;
 - a worker killed in the middle of a run leaves the run interrupted (not executed twice), and other workers go on;
 - a suspended tenant is closed (sessions, logins, its runs) until it is resumed, and other tenants go on;
-- a pg_dump backup restores the database;
+- a pg_dump backup restores the database; a paired backup (scripts/backup.sh) restores the database and the data
+  volume of the same point in time;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
   stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
+- Amazon Bedrock without an operator role: a tenant cannot use it although the server's own processes have AWS
+  credentials, and tool code never sees an AWS variable;
 - run budget decisions (BUDGET-1): a run in the worker pauses before a request its budget cannot cover, a raise in
   the API process continues it in a worker, and the request is sent exactly once.
 """
@@ -24,6 +27,7 @@ import secrets
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 from typing import Any
 
@@ -349,6 +353,118 @@ def test_without_the_sandbox_daemon_tool_code_does_not_run_at_all(tenants: Tenan
         _sandbox_approved(alice)  # the restarted daemon is proven again before later tests run tool code
 
 
+# ---- Amazon Bedrock without an operator role -----------------------------------------------------
+
+AWS_DECOY = "e2e-decoy-access-key-id"  # tests/e2e/aws-decoy.yaml: the server's own AWS credentials (not real ones)
+
+#: A tool that keeps its container busy for a few seconds, so the test can read the container's environment.
+#: Tool code cannot read environment variables itself (its static check refuses ``os``), so the test reads the
+#: container's configuration on the sandbox daemon instead.
+BUSY_TOOL = '''\
+def busy(rounds: int) -> int:
+    """Count for a while.
+
+    Args:
+        rounds: How many numbers to add up.
+
+    Returns:
+        The sum of the remainders.
+    """
+    total = 0
+    for number in range(rounds):
+        total += number % 7
+    return total
+'''
+
+BUSY_TOOL_TESTS = """\
+from tool import busy
+
+
+def test_busy():
+    assert busy(8) == 21
+"""
+
+
+def _server_has_aws_credentials() -> None:
+    for service in ("api", "worker"):
+        found = compose("exec", "-T", service, "printenv", "AWS_ACCESS_KEY_ID", check=False).stdout.strip()
+        assert found == AWS_DECOY, f"{service}: scripts/e2e.sh layers tests/e2e/aws-decoy.yaml ({found!r})"
+
+
+def test_bedrock_is_not_available_without_an_operator_role(tenants: Tenants) -> None:
+    """The server's processes have AWS credentials and a region, but NODESTRO_BEDROCK_TENANT_ROLES assigns no role:
+    a tenant can neither save Bedrock settings nor get a verified connection, and no AWS call is made."""
+    _server_has_aws_credentials()
+    _, owner = new_tenant("alice", "bedrock")
+    bedrock = next(item for item in owner.get("/api/settings").json()["providers"] if item["id"] == "bedrock")
+    assert bedrock["auth_methods"] == ["operator_role"] and bedrock["operator_role"] is False, bedrock
+    assert bedrock["configured"] is False, bedrock
+    assert bedrock["verification"]["code"] == "provider.bedrock_not_available", bedrock
+    saved = owner.put("/api/settings", json={"providers": {"bedrock": {"region": "eu-central-1"}}})
+    assert saved.status_code == 400 and saved.json()["code"] == "provider.bedrock_not_available", saved.text
+    verified = owner.post("/api/settings/providers/bedrock/verify", json={})
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["verification"] == {
+        "state": "not_configured",
+        "checked_at": None,  # nothing was checked against AWS
+        "code": "provider.bedrock_not_available",
+    }, verified.text
+    # A run of a workflow with a Bedrock model is refused before it starts, so it never uses the server's credentials.
+    flow = _workflow(owner, _flow("Bedrock without a role", "hello", model="bedrock:eu.anthropic.claude-sonnet-4-5"))
+    refused = owner.post(f"/api/workflows/{flow}/runs", json={"input": "go"})
+    assert refused.status_code == 400 and refused.json()["code"] == "provider.bedrock_not_available", refused.text
+
+
+def _running_tool_container_env(browser: Browser, rounds: int) -> list[str] | None:
+    """Call ``busy`` and read the environment of its container on the sandbox daemon while it runs (``None`` when the
+    call ended before its container was seen)."""
+    answer: dict[str, Any] = {}
+    call = threading.Thread(
+        target=lambda: answer.update(
+            response=browser.post("/api/tools/busy/run", json={"input": {"rounds": rounds}}, timeout=600)
+        )
+    )
+    call.start()
+    found: list[str] | None = None
+    try:
+        while call.is_alive() and found is None:
+            names = compose("exec", "-T", "sandbox", "docker", "ps", "--format", "{{.Names}}").stdout.split()
+            for name in (item for item in names if item.startswith("orkexa-sandbox-")):
+                inspected = compose(
+                    "exec", "-T", "sandbox", "docker", "inspect", "--format", "{{json .Config.Env}}", name, check=False
+                )
+                if inspected.returncode == 0:
+                    found = list(json.loads(inspected.stdout) or [])
+                    break
+            time.sleep(0.1)
+    finally:
+        call.join()
+    response = answer["response"]
+    assert response.status_code == 200 and response.json()["is_error"] is False, response.text
+    return found
+
+
+def test_tool_code_sees_no_aws_variables(tenants: Tenants) -> None:
+    """The server's API process has AWS credentials; the container that runs a tool on the sandbox daemon gets none
+    of its variables (Orkexa's run shape passes no ``-e``)."""
+    _server_has_aws_credentials()
+    alice = tenants.alice
+    _sandbox_approved(alice)
+    saved = alice.post(
+        "/api/tools", json={"function_name": "busy", "code": BUSY_TOOL, "tests": BUSY_TOOL_TESTS}, timeout=900
+    )
+    assert saved.status_code in (200, 201) and saved.json()["tool"] is not None, saved.text
+    rounds = 20_000_000
+    env = None
+    for _ in range(3):  # a fast machine may finish before the container is seen: count longer
+        env = _running_tool_container_env(alice, rounds)
+        if env is not None:
+            break
+        rounds *= 2
+    assert env is not None, "no tool container was seen while the tool ran"
+    assert not [item for item in env if item.upper().startswith("AWS_")], env
+
+
 # ---- workers ------------------------------------------------------------------------------------
 
 
@@ -514,3 +630,144 @@ def test_backup_and_restore_with_pg_dump(tenants: Tenants) -> None:
     wait_healthy("worker")
     assert alice.get(f"/api/workflows/{kept}").json()["name"] == "Kept by the backup"
     assert alice.get(f"/api/workflows/{later}").status_code == 404
+
+
+def _upload(browser: Browser, name: str, data: bytes) -> str:
+    answer = browser.post("/api/inputs", files=[("files", (name, data, "text/plain"))])
+    assert answer.status_code == 201, answer.text
+    stored = answer.json()[0]
+    assert stored["file"], stored
+    return str(stored["file"]["id"])
+
+
+def test_a_paired_backup_restores_the_database_and_the_tenant_files(tenants: Tenants) -> None:
+    """scripts/backup.sh stops the API and the worker, dumps the database and archives the data volume at the same
+    point in time; scripts/restore.sh with its manifest restores both, so a tenant's input file is back with its
+    bytes and what was written later is gone from the database and the volume."""
+    alice = tenants.alice
+    kept_bytes = ("kept by the paired backup " + secrets.token_hex(8)).encode()
+    kept = _upload(alice, "kept.txt", kept_bytes)
+    flow = _workflow(alice, _flow("Kept by the paired backup", "ALPHA"))
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    with tempfile.TemporaryDirectory() as directory:
+        made = subprocess.run(
+            ["bash", str(scripts / "backup.sh"), directory], capture_output=True, text=True, check=False, timeout=600
+        )
+        assert made.returncode == 0, made.stdout + made.stderr
+        manifest_path = Path(made.stdout.strip().splitlines()[-1])
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["quiesced"] is True and manifest["database"]["name"].endswith(".dump"), manifest
+        with tarfile.open(manifest_path.parent / manifest["data"]["name"]) as archive:
+            names = archive.getnames()
+            assert not any(name.startswith("./backups/") for name in names), "pre-migration dumps are left out"
+            stored = [archive.extractfile(item) for item in archive.getmembers() if item.isfile()]
+            assert any(item is not None and item.read() == kept_bytes for item in stored), names
+        # The API and the worker run again after the backup.
+        wait_healthy("api")
+        wait_healthy("worker")
+        assert alice.delete(f"/api/inputs/{kept}").status_code == 204
+        assert alice.get(f"/api/inputs/{kept}").status_code == 404
+        later = _upload(alice, "later.txt", b"written after the backup")
+
+        # A file whose checksum does not match the manifest: nothing is restored.
+        data_archive = manifest_path.parent / manifest["data"]["name"]
+        original = data_archive.read_bytes()
+        # The archive belongs to the image's user (10001); the folder is writable for all (backup.sh), so the test
+        # replaces the file instead of writing into it.
+        data_archive.unlink()
+        data_archive.write_bytes(original + b"x")
+        refused = subprocess.run(
+            ["bash", str(scripts / "restore.sh"), str(manifest_path)], capture_output=True, text=True, check=False
+        )
+        assert refused.returncode != 0 and "does not match the manifest" in refused.stderr, refused.stderr
+        assert alice.get(f"/api/inputs/{later}").status_code == 200, "a refused restore changed nothing"
+        data_archive.unlink()
+        data_archive.write_bytes(original)
+
+        restore = subprocess.run(
+            ["bash", str(scripts / "restore.sh"), str(manifest_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+        assert restore.returncode == 0, restore.stdout + restore.stderr
+    wait_healthy("api")
+    wait_healthy("worker")
+    content = alice.get(f"/api/inputs/{kept}/content")
+    assert content.status_code == 200 and content.content == kept_bytes, content.text[:200]
+    assert alice.get(f"/api/inputs/{later}").status_code == 404
+    assert alice.get(f"/api/workflows/{flow}").json()["name"] == "Kept by the paired backup"
+    # The later file's bytes are gone from the volume too, not only its row.
+    blobs = compose("exec", "-T", "api", "grep", "-rl", "written after the backup", "/var/lib/nodestro", check=False)
+    assert blobs.stdout.strip() == "", blobs.stdout
+
+
+# ---- semantic knowledge search (last: it adds tenants of alice that the login test must not see) ----
+
+
+EMBEDDING_MODEL = "qwen3-embedding:0.6b"  # the stub's one embedding model (compose/model-stub/stub.py)
+
+
+def _semantic_tenant(texts: dict[str, str]) -> Browser:
+    """A new tenant whose knowledge search is semantic (``vector``), with the stub as its Ollama endpoint (the
+    operator's endpoint in NODESTRO_MODEL_ENDPOINTS), and these knowledge files."""
+    _, owner = new_tenant("alice", "semantic")
+    saved = owner.put(
+        "/api/settings",
+        json={
+            "providers": {"ollama": {"base_url": STUB}},
+            "knowledge_retrieval": "vector",
+            "embedding_model": EMBEDDING_MODEL,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    for name, text in texts.items():
+        added = owner.post("/api/knowledge", files=[("files", (name, text.encode(), "text/plain"))])
+        assert added.status_code == 201, added.text
+    return owner
+
+
+def test_a_semantic_index_is_built_through_the_operators_embedding_endpoint(tenants: Tenants) -> None:
+    """The semantic index of a tenant is built with the embedding model of an operator's endpoint, stored in
+    PostgreSQL (pgvector) and searched there; another tenant's search never sees its passages."""
+    login(accounts()["alice"])
+    texts = {
+        "cats.txt": "Cats purr and sleep on warm windowsills all afternoon.",
+        "invoices.txt": "Quarterly invoices list the value added tax per customer.",
+        "trains.txt": "The night train leaves the central station at eleven.",
+    }
+    owner = _semantic_tenant(texts)
+    before = owner.get("/api/knowledge/index").json()
+    assert before["pgvector"] is True and before["state"] == "off" and before["chunks"] == len(texts), before
+    no_index = owner.get("/api/knowledge/search", params={"q": "tax", "mode": "vector"})
+    assert no_index.status_code >= 400, no_index.text  # never a silent fallback to full text
+
+    started = owner.post("/api/knowledge/index/rebuild", json={})
+    assert started.status_code == 202, started.text
+
+    def built() -> dict[str, Any] | None:
+        status = owner.get("/api/knowledge/index").json()
+        job = status.get("job") or {}
+        assert job.get("state") not in ("failed", "cancelled"), status
+        return status if status["state"] == "ready" and job.get("state") == "done" else None
+
+    status = wait_for(built, timeout=60, what="the semantic index")
+    assert status["embedded"] == len(texts), status
+    assert status["active"]["model"] == EMBEDDING_MODEL and status["active"]["dimensions"] == 64, status
+
+    hits = owner.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector"})
+    assert hits.status_code == 200, hits.text
+    assert hits.json()[0]["title"] == "invoices.txt", hits.json()
+    assert all(hit["ranks"].keys() == {"vector"} for hit in hits.json()), hits.json()
+    hybrid = owner.get("/api/knowledge/search", params={"q": "night train station", "mode": "hybrid"})
+    assert hybrid.status_code == 200 and hybrid.json()[0]["title"] == "trains.txt", hybrid.text
+
+    other = _semantic_tenant({"own.txt": "Another tenant writes about invoices of its own."})
+    assert other.post("/api/knowledge/index/rebuild", json={}).status_code == 202
+    wait_for(lambda: other.get("/api/knowledge/index").json()["state"] == "ready", timeout=60, what="the other index")
+    theirs = other.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector", "k": 50})
+    assert theirs.status_code == 200 and [hit["title"] for hit in theirs.json()] == ["own.txt"], theirs.text
+
+    dropped = owner.delete("/api/knowledge/index")
+    assert dropped.status_code == 200 and dropped.json()["state"] == "off", dropped.text

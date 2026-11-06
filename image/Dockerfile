@@ -15,18 +15,21 @@
 # secret (and the proxy variables as build arguments). Nothing is fetched when a container starts.
 
 ARG PYTHON_VERSION=3.13
-# The base images by the digest of their multi-platform index, so that a rebuild of the same commits uses the same
-# operating system layers (amd64 and arm64). PYTHON_IMAGE must be PYTHON_VERSION (the stages check the paths). Update
-# both on purpose: docker buildx imagetools inspect python:3.13-slim (or node:22-bookworm-slim).
-ARG PYTHON_IMAGE=python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc
-ARG NODE_IMAGE=node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+
+# ---- the base images ---------------------------------------------------------------------------
+# By the digest of their multi-platform index, so that a rebuild of the same commits uses the same operating system
+# layers (amd64 and arm64). They are FROM lines, so Dependabot (docker, /image) keeps the digests current; its
+# configuration keeps Python on 3.13 (PYTHON_VERSION: the stages check the paths) and Node.js on 22 (Node.js 24 is a
+# separate change planned for Q1 2027).
+FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc AS python-base
+FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS node-base
 
 # ---- development only: wheels that replace pinned components (--build-context overrides=DIR) ------
 # Empty unless a build passes the context; release images never do (scripts/build-image.sh refuses it).
 FROM scratch AS overrides
 
 # ---- the studio source and its built interface ---------------------------------------------------
-FROM ${NODE_IMAGE} AS studio
+FROM node-base AS studio
 ARG STUDIO_COMMIT
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
@@ -52,7 +55,7 @@ RUN --mount=type=secret,id=build_ca \
     test -f /src/src/nodestro_studio/static/index.html
 
 # ---- the Python environment (both profiles) ----------------------------------------------------
-FROM ${PYTHON_IMAGE} AS build
+FROM python-base AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=studio /src /src
 COPY image/install.py /install.py
@@ -101,9 +104,10 @@ RUN --mount=type=bind,from=overrides,target=/overrides \
     sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
 
 # ---- what both images share: tini and the docker CLI -----------------------------------------------
-FROM ${PYTHON_IMAGE} AS base
+FROM python-base AS base
 ARG TARGETARCH
-# The docker CLI talks to the sandbox's Docker daemon (DOCKER_HOST); the daemon itself is not in this image.
+# The docker CLI talks to the sandbox's Docker daemon (DOCKER_HOST); the daemon itself is not in this image. Its
+# version, download and checked SHA-256 go into /usr/local/share/nodestro/docker-cli.release for the release manifest.
 ARG DOCKER_CLI_VERSION=29.9.2
 ARG DOCKER_CLI_SHA256_AMD64=9ac225999fd5e863f7694c728ef23d480616b1e5639328fa309befd4243d69eb
 ARG DOCKER_CLI_SHA256_ARM64=873b3e0207857c3b2f28392fb922f3ea6efe37620c16d4d4aaf2fef409c90b73
@@ -121,6 +125,10 @@ RUN --mount=type=secret,id=build_ca \
     echo "${sum}  /tmp/docker.tgz" | sha256sum -c -; \
     tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker; \
     rm /tmp/docker.tgz; \
+    mkdir -p /usr/local/share/nodestro; \
+    printf 'version=%s\nsource=%s\nsha256=%s\nlicense=Apache-2.0\n' "${DOCKER_CLI_VERSION}" \
+      "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" "${sum}" \
+      > /usr/local/share/nodestro/docker-cli.release; \
     apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*; \
     docker --version
 # The base image's own pip and the pip wheel of ensurepip are never used: the environment in /opt/nodestro has no pip

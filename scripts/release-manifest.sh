@@ -20,4 +20,5 @@ docker run --rm --network none --read-only --user 10001:10001 \
   --entrypoint /opt/nodestro/venv/bin/python "$image" -I /release/release_manifest.py \
   --product nodestro-server --version "$version" --out /out --studio-meta /opt/nodestro/meta \
   --commit "$(git -C "$root" rev-parse HEAD)" --python /opt/nodestro/venv/bin/python \
-  --platform linux-amd64 --image "nodestro-server@$id" "${files[@]}"
+  --platform linux-amd64 --image "nodestro-server@$id" \
+  --bundled docker-cli=/usr/local/share/nodestro/docker-cli.release "${files[@]}"
