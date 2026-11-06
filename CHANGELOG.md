@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Studio pin: settings, attachments and providers (2026-11-06)
+
+- Pins nodestro-studio 58bb17d (studio #135): orkexa 566aa3c (model limits, live reasoning, resumable local setup,
+  valid Chat Completions histories for Ollama), runtime 62527d1, api a799912 (assistant file attachments, output
+  limits, local model readiness, publication overview), examples 97bf788, integrations 2e975ad, sdk b3ae8c7.
+
 ### Studio pin: product findings of the manual review (2026-11-05)
 
 - Pins nodestro-studio a1acb1b (studio #127): nodestro-runtime 57b40d2 (the strict offline mode refuses cloud models
