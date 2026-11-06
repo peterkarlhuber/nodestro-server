@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Studio pin: TODO abatement round 2 (2026-11-06)
+
+- Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant
+  file retention, tool version history, library copy memory space), sdk 1306cbe; settings change marks, example
+  sample files in the run dialog, sample data badge, tool adoption diff.
+
 ### Studio pin: TODO abatement round (2026-11-06)
 
 - Pins nodestro-studio 39fb164 (studio #136): orkexa 1b61fda, runtime 3d69702, api a3bd875, examples 82d894b,
