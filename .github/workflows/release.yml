@@ -53,6 +53,10 @@ jobs:
         run: |
           scripts/release-manifest.sh nodestro-server:candidate "$VERSION" release "release/nodestro-server-${VERSION}-linux-amd64.tar.gz"
           python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(m["version"], m["channel"], m["images"], "unknown licenses:", m["licenses"]["unknown"])' release/release-manifest.json
+      - name: Vulnerability scan of the image (scripts/scan-vulnerabilities.sh; the reports go into the candidate)
+        run: |
+          pip install pip-audit==2.10.1
+          scripts/scan-vulnerabilities.sh nodestro-server:candidate release/vulnerabilities
       - name: Scan the release files for secrets
         run: python3 -I scripts/scan_secrets.py release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -636,7 +636,8 @@ A release has three separate steps. Only the last two publish anything, and each
 1. **Candidate** (`.github/workflows/release.yml`, run by hand with the version, for example `v0.2.0-preview.1`): it
    builds the image from `studio.json` with the version in its labels, runs every acceptance test against it, saves
    it, scans the saved image and the release files for secrets (`scripts/scan_secrets.py`, including the build
-   token's exact value) and writes `release-manifest.json` and `SHA256SUMS`. The run's `release-candidate`
+   token's exact value), scans the image for known vulnerabilities (`scripts/scan-vulnerabilities.sh`, see below) and
+   writes `release-manifest.json` and `SHA256SUMS`. The run's `release-candidate`
    artifact holds the saved image and those files. It pushes nothing and its token can only read.
 2. **Publish** (`.github/workflows/publish.yml`, run by hand with the candidate's run ID, the version and the
    confirmation `publish <version>`): it checks that the run is a passed candidate on master, the checksums, the
@@ -653,6 +654,15 @@ A release has three separate steps. Only the last two publish anything, and each
 - Images are **not signed** (no signing key is configured); the manifest says `"status": "unsigned"` and the image
   carries the labels `dev.nodestro.signing=unsigned` and `dev.nodestro.channel`. Preview versions are not meant for
   production data.
+- Vulnerability scans: `scripts/scan-vulnerabilities.sh IMAGE [REPORT_DIR]` audits the image's Python packages
+  (its pip freeze `/opt/nodestro/pinned.txt`, without the Nodestro components from git) with `pip-audit` and its
+  operating system packages and binaries with Trivy (`scripts/scanner/Dockerfile`, pinned by digest, kept current by
+  Dependabot) on the saved image. Any known Python vulnerability fails it, and so does a HIGH or CRITICAL finding
+  that has a fixed version; findings without a fix (most of them in Debian packages of the base image) are listed in
+  the reports only and go away with a base image refresh. Accepted findings go into
+  `scripts/vulnerability-allow.txt` with their reason. CI scans both images (server and `local`) on every change and
+  keeps the reports as the `vulnerability-reports` artifact; the candidate puts them into `release/vulnerabilities/`
+  (they are not published).
 - Rollback:
   1. Stop the API and the workers.
   2. If the newer release migrated the database, restore the backup that its `migrate` step wrote (see "Backup and

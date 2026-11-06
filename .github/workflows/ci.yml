@@ -107,3 +107,21 @@ jobs:
           python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/image.tar"
           scripts/release-manifest.sh nodestro-server:ci "ci-${GITHUB_SHA::12}" "$RUNNER_TEMP/release"
           python3 -I scripts/scan_secrets.py "$RUNNER_TEMP/release"
+      - name: Vulnerability scan of both images (Python packages, operating system packages and binaries)
+        # scripts/scan-vulnerabilities.sh: pip-audit on the image's pip freeze, Trivy (scripts/scanner/Dockerfile, by
+        # digest) on the saved image. Fails on any known Python vulnerability and on HIGH or CRITICAL findings that have
+        # a fix; findings without a fix are only reported. The self-test first proves that a vulnerable package fails.
+        run: |
+          pip install pip-audit==2.10.1
+          scripts/test_scan_vulnerabilities.sh nodestro-server:ci
+          status=0
+          scripts/scan-vulnerabilities.sh nodestro-server:ci "$RUNNER_TEMP/vulnerabilities/server" || status=1
+          scripts/scan-vulnerabilities.sh nodestro-local:ci "$RUNNER_TEMP/vulnerabilities/local" || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: vulnerability-reports
+          path: ${{ runner.temp }}/vulnerabilities/
+          retention-days: 14
+          if-no-files-found: ignore

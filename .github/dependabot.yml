@@ -25,6 +25,14 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 2
+  # The vulnerability scanner (Trivy) of scripts/scan-vulnerabilities.sh, by tag and digest.
+  - package-ecosystem: docker
+    directory: /scripts/scanner
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 1
   - package-ecosystem: docker-compose
     directory: /compose
     schedule:
