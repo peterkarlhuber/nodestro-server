@@ -144,7 +144,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-arm64:
-    # The same image and acceptance tests on a Linux arm64 runner (SRV-012): the image's bases and the stack's images
+    # The same image and acceptance tests on a Linux arm64 runner: the image's bases and the stack's images
     # are multi-platform indexes, and the Dockerfile has the docker CLI's arm64 checksum. The Axentra switch run and the
     # scans stay on amd64.
     runs-on: ubuntu-24.04-arm

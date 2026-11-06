@@ -202,7 +202,7 @@ def _semantic_tenant(texts: dict[str, str]) -> Browser:
 
 
 def test_a_semantic_index_is_built_through_the_operators_embedding_endpoint(tenants: Tenants) -> None:
-    """SRV-020: the semantic index of a tenant is built with the embedding model of an operator's endpoint, stored in
+    """The semantic index of a tenant is built with the embedding model of an operator's endpoint, stored in
     PostgreSQL (pgvector) and searched there; another tenant's search never sees its passages."""
     login(accounts()["alice"])
     texts = {
