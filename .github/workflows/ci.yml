@@ -135,3 +135,33 @@ jobs:
           path: ${{ runner.temp }}/vulnerabilities/
           retention-days: 14
           if-no-files-found: ignore
+
+  e2e-arm64:
+    # The same image and acceptance tests on a Linux arm64 runner (SRV-012): the image's bases and the stack's images
+    # are multi-platform indexes, and the Dockerfile has the docker CLI's arm64 checksum. The Axentra switch run and the
+    # scans stay on amd64.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install pytest==8.4.2 httpx==0.28.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker
+      - name: Environment
+        run: |
+          uname -m
+          docker version --format '{{.Server.Arch}}'
+      - name: Build the image
+        run: scripts/build-image.sh nodestro-server:ci
+      - name: The image is arm64
+        run: test "$(docker image inspect --format '{{.Architecture}}' nodestro-server:ci)" = arm64
+      - name: Acceptance tests
+        env:
+          NODESTRO_IMAGE: nodestro-server:ci
+        run: scripts/e2e.sh -v

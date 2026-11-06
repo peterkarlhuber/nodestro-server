@@ -687,8 +687,9 @@ A release has three separate steps. Only the last two publish anything, and each
      restore into a new, empty database instead (created by the owner role like the original, the roles already
      exist) and point `NODESTRO_DATABASE_URL` and `NODESTRO_DATABASE_MIGRATION_URL` at it.
   3. Start the previous image's `migrate`, then its API and workers.
-- Supported: linux/amd64 images (the e2e tests run on that platform only). The Dockerfile also has an arm64 docker
-  CLI checksum, but no arm64 image is built or tested.
+- Supported: linux/amd64 images. The CI job `e2e-arm64` (added 2026-11-06) builds the image on a Linux arm64 runner
+  and runs the acceptance tests there; arm64 counts as tested once that job has passed, and release candidates are
+  still built for amd64 only.
 
 ## Development stack (Linux)
 
