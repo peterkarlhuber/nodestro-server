@@ -632,6 +632,23 @@ it; workers drain their current run on SIGTERM (give them a stop timeout longer 
 reaper also marks a run as interrupted that is stored as queued or running without an active job, once it has not
 changed for twice the lease (120 seconds with the default `NODESTRO_WORKER_LEASE_SECONDS`).
 
+## Load test
+
+`tests/e2e/load.py` loads a running development stack: `--tenants` new tenants start `--runs` runs each from
+`--concurrency` threads against the model stub, with `--workers` worker processes, while the runs and usage views are
+read; it prints run throughput, start latency, run duration and the list and usage latency as percentiles
+(`--json FILE` keeps the report). Start the stack with `KEEP_STACK=1 scripts/e2e.sh -k test_the_configured_server_is_ready`
+(or `docker compose up -d --wait`), then for example `python3 tests/e2e/load.py --tenants 4 --runs 50 --concurrency 24
+--workers 3`. The model stub answers at once, so the figures are those of the API, the workers and PostgreSQL.
+
+Measured only on a development machine so far, **not on target hardware** (2026-11-06, studio 58bb17d, 4 shared
+virtual CPUs, the whole stack on the same machine, an otherwise busy host): 200 runs of 4 tenants with 3 workers and 24
+concurrent clients all succeeded in 15.5 s (12.9 runs per second); start p50 0.29 s and p99 1.0 s, start to finished
+p50 1.6 s and p99 4.8 s; `GET /api/runs` p50 0.06 s and p99 0.28 s and `GET /api/usage` p50 0.06 s and p99 0.53 s while
+the runs were going, both about 0.015 s afterwards. Before a production pilot, run it on the target hardware with
+realistic tenant, run and worker numbers and a database that already holds months of runs (`/api/usage` grows with the
+number of runs).
+
 ## System requirements (tested)
 
 What the acceptance tests ran on. Anything else is untested, not unsupported by design.
