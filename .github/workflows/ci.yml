@@ -57,6 +57,12 @@ jobs:
           PY
       - name: studio.json names a full commit
         run: python3 -c 'import json,re,sys; c=json.load(open("studio.json"))["nodestro-studio"]; sys.exit(0 if re.fullmatch(r"[0-9a-f]{40}", c) else 1)'
+      - run: python3 -I scripts/test_pin_distance.py
+      - name: The studio pin is not behind studio master (a warning, never blocking)
+        # Annotates the run when studio.json lags behind merge commits of nodestro-studio master that are older than
+        # three days (scripts/pin_distance.py); nodestro-desktop and nodestro-local-docker run the same check.
+        continue-on-error: true
+        run: python3 -I scripts/pin_distance.py studio.json
 
   e2e:
     # The acceptance tests of the server (plan step PR-12): image, compose stack, logins, tenants, sandbox, workers,
