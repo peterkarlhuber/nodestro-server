@@ -179,73 +179,6 @@ def test_the_database_has_pgvector_for_semantic_knowledge_search(stack: None) ->
     assert psql("SELECT '[1,2,3]'::vector <=> '[1,2,3]'::vector").strip() == "0"
 
 
-EMBEDDING_MODEL = "qwen3-embedding:0.6b"  # the stub's one embedding model (compose/model-stub/stub.py)
-
-
-def _semantic_tenant(texts: dict[str, str]) -> Browser:
-    """A new tenant whose knowledge search is semantic (``vector``), with the stub as its Ollama endpoint (the
-    operator's endpoint in NODESTRO_MODEL_ENDPOINTS), and these knowledge files."""
-    _, owner = new_tenant("alice", "semantic")
-    saved = owner.put(
-        "/api/settings",
-        json={
-            "providers": {"ollama": {"base_url": STUB}},
-            "knowledge_retrieval": "vector",
-            "embedding_model": EMBEDDING_MODEL,
-        },
-    )
-    assert saved.status_code == 200, saved.text
-    for name, text in texts.items():
-        added = owner.post("/api/knowledge", files=[("files", (name, text.encode(), "text/plain"))])
-        assert added.status_code == 201, added.text
-    return owner
-
-
-def test_a_semantic_index_is_built_through_the_operators_embedding_endpoint(tenants: Tenants) -> None:
-    """The semantic index of a tenant is built with the embedding model of an operator's endpoint, stored in
-    PostgreSQL (pgvector) and searched there; another tenant's search never sees its passages."""
-    login(accounts()["alice"])
-    texts = {
-        "cats.txt": "Cats purr and sleep on warm windowsills all afternoon.",
-        "invoices.txt": "Quarterly invoices list the value added tax per customer.",
-        "trains.txt": "The night train leaves the central station at eleven.",
-    }
-    owner = _semantic_tenant(texts)
-    before = owner.get("/api/knowledge/index").json()
-    assert before["pgvector"] is True and before["state"] == "off" and before["chunks"] == len(texts), before
-    no_index = owner.get("/api/knowledge/search", params={"q": "tax", "mode": "vector"})
-    assert no_index.status_code >= 400, no_index.text  # never a silent fallback to full text
-
-    started = owner.post("/api/knowledge/index/rebuild", json={})
-    assert started.status_code == 202, started.text
-
-    def built() -> dict[str, Any] | None:
-        status = owner.get("/api/knowledge/index").json()
-        job = status.get("job") or {}
-        assert job.get("state") not in ("failed", "cancelled"), status
-        return status if status["state"] == "ready" and job.get("state") == "done" else None
-
-    status = wait_for(built, timeout=60, what="the semantic index")
-    assert status["embedded"] == len(texts), status
-    assert status["active"]["model"] == EMBEDDING_MODEL and status["active"]["dimensions"] == 64, status
-
-    hits = owner.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector"})
-    assert hits.status_code == 200, hits.text
-    assert hits.json()[0]["title"] == "invoices.txt", hits.json()
-    assert all(hit["ranks"].keys() == {"vector"} for hit in hits.json()), hits.json()
-    hybrid = owner.get("/api/knowledge/search", params={"q": "night train station", "mode": "hybrid"})
-    assert hybrid.status_code == 200 and hybrid.json()[0]["title"] == "trains.txt", hybrid.text
-
-    other = _semantic_tenant({"own.txt": "Another tenant writes about invoices of its own."})
-    assert other.post("/api/knowledge/index/rebuild", json={}).status_code == 202
-    wait_for(lambda: other.get("/api/knowledge/index").json()["state"] == "ready", timeout=60, what="the other index")
-    theirs = other.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector", "k": 50})
-    assert theirs.status_code == 200 and [hit["title"] for hit in theirs.json()] == ["own.txt"], theirs.text
-
-    dropped = owner.delete("/api/knowledge/index")
-    assert dropped.status_code == 200 and dropped.json()["state"] == "off", dropped.text
-
-
 # ---- authentication -----------------------------------------------------------------------------
 
 
@@ -764,3 +697,73 @@ def test_a_paired_backup_restores_the_database_and_the_tenant_files(tenants: Ten
     # The later file's bytes are gone from the volume too, not only its row.
     blobs = compose("exec", "-T", "api", "grep", "-rl", "written after the backup", "/var/lib/nodestro", check=False)
     assert blobs.stdout.strip() == "", blobs.stdout
+
+
+# ---- semantic knowledge search (last: it adds tenants of alice that the login test must not see) ----
+
+
+EMBEDDING_MODEL = "qwen3-embedding:0.6b"  # the stub's one embedding model (compose/model-stub/stub.py)
+
+
+def _semantic_tenant(texts: dict[str, str]) -> Browser:
+    """A new tenant whose knowledge search is semantic (``vector``), with the stub as its Ollama endpoint (the
+    operator's endpoint in NODESTRO_MODEL_ENDPOINTS), and these knowledge files."""
+    _, owner = new_tenant("alice", "semantic")
+    saved = owner.put(
+        "/api/settings",
+        json={
+            "providers": {"ollama": {"base_url": STUB}},
+            "knowledge_retrieval": "vector",
+            "embedding_model": EMBEDDING_MODEL,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    for name, text in texts.items():
+        added = owner.post("/api/knowledge", files=[("files", (name, text.encode(), "text/plain"))])
+        assert added.status_code == 201, added.text
+    return owner
+
+
+def test_a_semantic_index_is_built_through_the_operators_embedding_endpoint(tenants: Tenants) -> None:
+    """The semantic index of a tenant is built with the embedding model of an operator's endpoint, stored in
+    PostgreSQL (pgvector) and searched there; another tenant's search never sees its passages."""
+    login(accounts()["alice"])
+    texts = {
+        "cats.txt": "Cats purr and sleep on warm windowsills all afternoon.",
+        "invoices.txt": "Quarterly invoices list the value added tax per customer.",
+        "trains.txt": "The night train leaves the central station at eleven.",
+    }
+    owner = _semantic_tenant(texts)
+    before = owner.get("/api/knowledge/index").json()
+    assert before["pgvector"] is True and before["state"] == "off" and before["chunks"] == len(texts), before
+    no_index = owner.get("/api/knowledge/search", params={"q": "tax", "mode": "vector"})
+    assert no_index.status_code >= 400, no_index.text  # never a silent fallback to full text
+
+    started = owner.post("/api/knowledge/index/rebuild", json={})
+    assert started.status_code == 202, started.text
+
+    def built() -> dict[str, Any] | None:
+        status = owner.get("/api/knowledge/index").json()
+        job = status.get("job") or {}
+        assert job.get("state") not in ("failed", "cancelled"), status
+        return status if status["state"] == "ready" and job.get("state") == "done" else None
+
+    status = wait_for(built, timeout=60, what="the semantic index")
+    assert status["embedded"] == len(texts), status
+    assert status["active"]["model"] == EMBEDDING_MODEL and status["active"]["dimensions"] == 64, status
+
+    hits = owner.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector"})
+    assert hits.status_code == 200, hits.text
+    assert hits.json()[0]["title"] == "invoices.txt", hits.json()
+    assert all(hit["ranks"].keys() == {"vector"} for hit in hits.json()), hits.json()
+    hybrid = owner.get("/api/knowledge/search", params={"q": "night train station", "mode": "hybrid"})
+    assert hybrid.status_code == 200 and hybrid.json()[0]["title"] == "trains.txt", hybrid.text
+
+    other = _semantic_tenant({"own.txt": "Another tenant writes about invoices of its own."})
+    assert other.post("/api/knowledge/index/rebuild", json={}).status_code == 202
+    wait_for(lambda: other.get("/api/knowledge/index").json()["state"] == "ready", timeout=60, what="the other index")
+    theirs = other.get("/api/knowledge/search", params={"q": "value added tax on invoices", "mode": "vector", "k": 50})
+    assert theirs.status_code == 200 and [hit["title"] for hit in theirs.json()] == ["own.txt"], theirs.text
+
+    dropped = owner.delete("/api/knowledge/index")
+    assert dropped.status_code == 200 and dropped.json()["state"] == "off", dropped.text
