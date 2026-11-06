@@ -47,7 +47,9 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
 
 ## Members
 
-Members are managed with operator commands; they cannot be managed in the studio yet. `USER` is a user id
+Owners and administrators manage the members of their tenant in the studio (Settings → Members: change a role,
+remove a member; only an owner gives, takes or changes the owner role). Operators use these commands as well, for
+example to add a person or to manage a tenant without an administrator. `USER` is a user id
 (`u_…`) or the person's subject at the configured identity provider. An e-mail address (compared
 case-insensitively) only looks the person up: it is the latest claim of the identity provider, so it never names a
 user by itself. The command prints the matching user with their provider, subject and name and goes on only when you
@@ -91,6 +93,8 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_WORKER_LEASE_SECONDS` | How long a run stays a worker's without a heartbeat (default 60) |
 | `NODESTRO_WORKER_POLL_SECONDS`, `NODESTRO_WORKER_REAP_SECONDS` | Worker intervals (defaults 1 and 15) |
 | `NODESTRO_WORKER_CLEANUP_SECONDS` | How often the scheduler leader cleans up (default 600): it deletes expired sessions and abandoned login starts, finished jobs after 7 days and run events after 2 days (the runs themselves stay) |
+| `NODESTRO_TENANT_IDLE_MINUTES` | Minutes after which an API process closes a tenant's context that no request uses and that has no background work (default 30; `0` keeps contexts open). The next request opens it again |
+| `NODESTRO_SERVER_EXPORT_TENANT_QUOTA_BYTES` | The most bytes of export packages one tenant keeps on the server (default 8 GiB). A build beyond it is refused with `export.server_quota`; members free space by deleting exports |
 | `NODESTRO_DATABASE_POOL_SIZE` | Database connections per API or worker process (default 8) |
 | `NODESTRO_DATABASE_STATEMENT_TIMEOUT` | Longest time one SQL statement may run, in seconds (default 30; 0: no limit). Migrations have no limit |
 | `NODESTRO_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT` | Longest time a transaction may stay idle, in seconds (default 300) |
@@ -263,6 +267,9 @@ the table `nodestro_chunk_vectors` (migration `0010`, tenant-scoped like every o
   usually may not and goes on without it.
 - **Without pgvector**: semantic search still works; the runtime ranks the same rows (slower for large knowledge
   bases). Installing pgvector later needs no reindex: the stored vectors are used as they are.
+- **Reindex jobs:** building or rebuilding a semantic index is a `reindex` job of the job queue that a worker runs
+  with a lease, like runs. A restarted API process or worker loses nothing: another worker continues where the job
+  stopped, and every API process shows its progress.
 
 Switching an existing compose installation from `postgres:17` to the pgvector image keeps the data volume: both are
 PostgreSQL 17 with the same data format. Rolling back to `postgres:17` also starts; the installed extension is then
