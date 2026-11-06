@@ -252,6 +252,26 @@ Moving an existing installation (one role that owns the tables, or a superuser) 
 The development stack does this by itself: its `db-roles` service runs `roles.sql` on every start, and
 `scripts/dev-secrets.py` rewrites a `database_url` that still names the superuser `nodestro`.
 
+**Axentra and the table owner (MUP-ONA A6).** A role that owns tables protected by row-level security can switch
+row-level security off, so it must not be the role the API and the workers connect as:
+
+- **This server:** with `NODESTRO_AXENTRA=on`, Nodestro checks the runtime role itself before Axentra starts, in every
+  environment: a superuser, a `BYPASSRLS` role or a role that owns tables stops `check`, `api` and `worker`
+  (`storage.role_unsafe` / `axentra.unavailable`) unless `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` (development only). It
+  passes Axentra `allow_superuser` and `allow_table_owner` from that one variable; `[database]` values in
+  `NODESTRO_AXENTRA_CONFIG` and `AXENTRA__*` variables do not change them. Axentra runs as `production` when
+  `NODESTRO_PUBLIC_ORIGIN` is https. Nothing changes for a server with the roles above (`nodestro_owner` migrates,
+  `nodestro_app` connects).
+- **Axentra on its own** (its own configuration, not this server): `database.allow_table_owner` is unset by default,
+  which means `false` in production (`environment = "production"`) and `true` in development and test. In production
+  `Axentra.start()` then refuses an application role that owns the tables (`configuration_error`, "refusing to start:
+  the database role owns the tables protected by row-level security …"). Use a separate owner role for migrations
+  (`database.migration_url_ref`, `axentra migrate --grant-runtime-role <role>`) and connect as a runtime role that owns
+  nothing, or accept the risk explicitly with `allow_table_owner = true` (`AXENTRA__DATABASE__ALLOW_TABLE_OWNER=true`),
+  which starts with a warning. `allow_table_owner = false` refuses an owner role in every environment. This is a
+  breaking change for production installations of Axentra that connect as the owner; it takes effect with the
+  Axentra version that contains MUP-ONA A6.
+
 ## Semantic knowledge search and local models
 
 Knowledge search has three modes (nodestro-runtime `docs/local-models.md`): full text (the default, needs nothing),
