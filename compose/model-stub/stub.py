@@ -87,7 +87,14 @@ def _answer(messages: list[dict[str, Any]]) -> dict[str, Any]:
     if len(words) >= 2 and words[0] == "CALL":
         results = [item for item in messages if item.get("role") == "tool"]
         if not results:
-            arguments = words[2] if len(words) > 2 else "{}"
+            # Only the JSON object after the tool name: the runtime may add its own sections to the system prompt.
+            arguments = "{}"
+            if len(words) > 2:
+                try:
+                    _, end = json.JSONDecoder().raw_decode(words[2])
+                    arguments = words[2][:end]
+                except ValueError:
+                    arguments = words[2]
             return {
                 "tool_calls": [
                     {"id": "call_1", "type": "function", "function": {"name": words[1], "arguments": arguments}}

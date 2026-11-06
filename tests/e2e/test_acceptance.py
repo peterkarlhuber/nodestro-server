@@ -672,12 +672,16 @@ def test_a_paired_backup_restores_the_database_and_the_tenant_files(tenants: Ten
         # A file whose checksum does not match the manifest: nothing is restored.
         data_archive = manifest_path.parent / manifest["data"]["name"]
         original = data_archive.read_bytes()
+        # The archive belongs to the image's user (10001); the folder is writable for all (backup.sh), so the test
+        # replaces the file instead of writing into it.
+        data_archive.unlink()
         data_archive.write_bytes(original + b"x")
         refused = subprocess.run(
             ["bash", str(scripts / "restore.sh"), str(manifest_path)], capture_output=True, text=True, check=False
         )
         assert refused.returncode != 0 and "does not match the manifest" in refused.stderr, refused.stderr
         assert alice.get(f"/api/inputs/{later}").status_code == 200, "a refused restore changed nothing"
+        data_archive.unlink()
         data_archive.write_bytes(original)
 
         restore = subprocess.run(
