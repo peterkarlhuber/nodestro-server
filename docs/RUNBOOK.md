@@ -299,6 +299,25 @@ that the operator runs and lists in `NODESTRO_MODEL_ENDPOINTS` (for example `htt
 embedding model of semantic search (default `qwen3-embedding:0.6b`) runs on such an endpoint too. Run Ollama on a host
 with enough memory (GPU recommended), on a network the workers and the API reach and the internet does not.
 
+**Keep `NODESTRO_MODEL_ENDPOINTS` narrow (MUP-ONA A7, PS-7).** Tenant admins choose the base URL of an
+OpenAI-compatible, Ollama or vLLM endpoint themselves. The server sends those requests from inside its network, so the
+only protection against a tenant reaching internal services through it (server-side request forgery) is this list:
+an endpoint is used only when its origin (`scheme://host:port`, compared exactly; no wildcards, no paths) is listed,
+checked again on every use, and redirects are not followed. There is no second, address-based check for these
+endpoints. Therefore:
+
+- list only the origins of model servers you run for tenants, each with its port (`http://ollama.internal:11434`,
+  not a whole host or network); leave the variable empty when tenants use no self-hosted endpoint;
+- never list an origin that serves anything else: the database, the Docker or sandbox daemon, the metrics endpoint,
+  a cloud metadata service (`169.254.169.254`), an admin interface or a proxy that forwards elsewhere;
+- prefer `https` and a name that resolves only to that model server; review the list when model servers move, and
+  remove origins no tenant uses;
+- put the model servers on a network segment that reaches nothing else the tenants must not use.
+
+This is an accepted risk of the operator's configuration (PS-7): a list kept too wide lets tenants send requests to
+whatever it names. The public provider APIs (Anthropic, OpenAI, Gemini, Bedrock) are not affected; their addresses are
+fixed.
+
 ## Amazon Bedrock for tenants
 
 Tenants **never** use the server's own (ambient) AWS credentials: not its environment, not `~/.aws`, not an
@@ -854,7 +873,8 @@ development stack only; it approves no switch for production.
   membership ends.
 - Every request is bound to the session's tenant; a tenant's data is never visible to another tenant.
 - Tenants reach only the model endpoints in `NODESTRO_MODEL_ENDPOINTS` besides the providers' public APIs, so the
-  server cannot be used to probe its own network.
+  server cannot be used to probe its own network, as long as the list stays narrow (see
+  [Semantic knowledge search and local models](#semantic-knowledge-search-and-local-models)).
 - Amazon Bedrock: tenants never use the server's own AWS credentials, only the role the operator assigned them in
   `NODESTRO_BEDROCK_TENANT_ROLES`; there are no custom Bedrock endpoints. The server's base identity needs only
   `sts:AssumeRole`. On EC2, require IMDSv2 with hop limit 1 (see [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants)).

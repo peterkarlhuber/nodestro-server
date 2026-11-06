@@ -13,6 +13,8 @@
 - RUNBOOK "Database roles": Axentra and the table owner (MUP-ONA A6, PS-6): this server checks the runtime role
   itself and passes Axentra `allow_table_owner` from `NODESTRO_AXENTRA_ALLOW_SUPERUSER` (unchanged); Axentra on its
   own refuses an owner role in production unless `database.allow_table_owner = true`.
+- RUNBOOK: how to keep `NODESTRO_MODEL_ENDPOINTS` narrow (MUP-ONA A7, PS-7, accepted risk): exact origins only,
+  never internal services or metadata addresses, model servers on their own network segment.
 ### Studio pin: TODO abatement round 2 (2026-11-06)
 
 - Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant
