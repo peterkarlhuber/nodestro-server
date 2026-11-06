@@ -546,12 +546,25 @@ next use, which needs the package index.
 
 ## Backup and restore
 
-Back up two things together: the database and the data volume (`NODESTRO_DATA_DIR`, the tenants' files).
+Back up two things together, from the same point in time: the database and the data volume (`NODESTRO_DATA_DIR`,
+the tenants' files, such as their input files). A dump and an archive taken while the API and the workers keep
+writing do not match: a file uploaded between the two is in one and not in the other. Take a paired backup with
+nothing running that writes:
 
-```sh
-nodestro-server backup /backups          # pg_dump, custom format: /backups/nodestro-<time>.dump
-tar -C /var/lib/nodestro -czf /backups/nodestro-data-<time>.tar.gz .
-```
+1. Stop the API and all workers (a maintenance window; runs in progress are interrupted and can be continued
+   afterwards, see [Upgrade](#upgrade)).
+2. `nodestro-server backup /backups` (pg_dump, custom format: `/backups/nodestro-<time>.dump`).
+3. `tar -C /var/lib/nodestro --exclude=./backups -czf /backups/nodestro-data-<time>.tar.gz .` (the data volume
+   without the pre-migration dumps of `migrate --backup-dir`).
+4. Record the files with their SHA-256 sums together, then start the API and the workers again.
+
+`scripts/backup.sh DIR` does these steps for the development stack and writes `nodestro-backup-<time>.json` (the
+dump, the data archive and the storage archive below, each with size and SHA-256, the image ID and the time);
+`scripts/restore.sh DIR/nodestro-backup-<time>.json` checks every checksum before it changes anything and restores
+the database and the data volume. The end-to-end test `test_a_paired_backup_restores_the_database_and_the_tenant_files`
+runs both: an input file deleted after the backup is back with its bytes, one uploaded after it is gone. A
+file system snapshot of the volume (LVM, ZFS, a cloud disk) taken while the API and the workers are stopped works the
+same way and shortens the window.
 
 With `NODESTRO_FILES_BACKEND=axentra` input file bytes live in Axentra's storage. On the local backend `backup` also
 writes `/backups/nodestro-files-<time>.tar.gz` of `storage.local_path` (after the dump; uploads in progress left
@@ -588,12 +601,14 @@ To restore:
    Use the image's `pg_restore` and `psql` (version 17, like its `pg_dump`). Into a new database server, a superuser installs pgvector first (`roles.sql`). The client tools and the server must have the same major
    version: a dump written by `pg_dump` 17 cannot be read by an older `pg_restore`, and `pg_restore` 17 cannot
    restore into PostgreSQL 16 (it sets `transaction_timeout`). This is why the server needs PostgreSQL 17.
-3. Restore the data volume from the archive of the same time.
+3. Restore the data volume from the archive of the same backup: remove its contents (keep `backups/` if you want
+   the pre-migration dumps) and unpack the archive as the image's user (10001).
 4. Run `nodestro-server migrate` (an older dump is migrated; a backup is taken first; the runtime role is granted its
    privileges again), then start the API and the workers. Into a new database server: create the roles first.
 
-`scripts/restore.sh DUMP` does steps 1, 2 and 4 for the development stack; the end-to-end tests restore a backup
-this way.
+`scripts/restore.sh MANIFEST` does steps 1 to 4 for the development stack (with `files verify` when the backup has a
+storage archive); `scripts/restore.sh DUMP` restores a dump alone (steps 1, 2 and 4). The end-to-end tests restore
+backups both ways.
 
 ## Upgrade
 

@@ -9,7 +9,8 @@ Every test drives the running stack from the outside (see conftest.py):
   all while that daemon is down; tenants reach only the model endpoints the operator allowed;
 - a worker killed in the middle of a run leaves the run interrupted (not executed twice), and other workers go on;
 - a suspended tenant is closed (sessions, logins, its runs) until it is resumed, and other tenants go on;
-- a pg_dump backup restores the database;
+- a pg_dump backup restores the database; a paired backup (scripts/backup.sh) restores the database and the data
+  volume of the same point in time;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
   stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
 - run budget decisions (BUDGET-1): a run in the worker pauses before a request its budget cannot cover, a raise in
@@ -514,3 +515,70 @@ def test_backup_and_restore_with_pg_dump(tenants: Tenants) -> None:
     wait_healthy("worker")
     assert alice.get(f"/api/workflows/{kept}").json()["name"] == "Kept by the backup"
     assert alice.get(f"/api/workflows/{later}").status_code == 404
+
+
+def _upload(browser: Browser, name: str, data: bytes) -> str:
+    answer = browser.post("/api/inputs", files=[("files", (name, data, "text/plain"))])
+    assert answer.status_code == 201, answer.text
+    stored = answer.json()[0]
+    assert stored["file"], stored
+    return str(stored["file"]["id"])
+
+
+def test_a_paired_backup_restores_the_database_and_the_tenant_files(tenants: Tenants) -> None:
+    """scripts/backup.sh stops the API and the worker, dumps the database and archives the data volume at the same
+    point in time; scripts/restore.sh with its manifest restores both, so a tenant's input file is back with its
+    bytes and what was written later is gone from the database and the volume."""
+    alice = tenants.alice
+    kept_bytes = ("kept by the paired backup " + secrets.token_hex(8)).encode()
+    kept = _upload(alice, "kept.txt", kept_bytes)
+    flow = _workflow(alice, _flow("Kept by the paired backup", "ALPHA"))
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    with tempfile.TemporaryDirectory() as directory:
+        made = subprocess.run(
+            ["bash", str(scripts / "backup.sh"), directory], capture_output=True, text=True, check=False, timeout=600
+        )
+        assert made.returncode == 0, made.stdout + made.stderr
+        manifest_path = Path(made.stdout.strip().splitlines()[-1])
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["quiesced"] is True and manifest["database"]["name"].endswith(".dump"), manifest
+        with tarfile.open(manifest_path.parent / manifest["data"]["name"]) as archive:
+            names = archive.getnames()
+            assert not any(name.startswith("./backups/") for name in names), "pre-migration dumps are left out"
+            stored = [archive.extractfile(item) for item in archive.getmembers() if item.isfile()]
+            assert any(item is not None and item.read() == kept_bytes for item in stored), names
+        # The API and the worker run again after the backup.
+        wait_healthy("api")
+        wait_healthy("worker")
+        assert alice.delete(f"/api/inputs/{kept}").status_code == 204
+        assert alice.get(f"/api/inputs/{kept}").status_code == 404
+        later = _upload(alice, "later.txt", b"written after the backup")
+
+        # A file whose checksum does not match the manifest: nothing is restored.
+        data_archive = manifest_path.parent / manifest["data"]["name"]
+        original = data_archive.read_bytes()
+        data_archive.write_bytes(original + b"x")
+        refused = subprocess.run(
+            ["bash", str(scripts / "restore.sh"), str(manifest_path)], capture_output=True, text=True, check=False
+        )
+        assert refused.returncode != 0 and "does not match the manifest" in refused.stderr, refused.stderr
+        assert alice.get(f"/api/inputs/{later}").status_code == 200, "a refused restore changed nothing"
+        data_archive.write_bytes(original)
+
+        restore = subprocess.run(
+            ["bash", str(scripts / "restore.sh"), str(manifest_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+        assert restore.returncode == 0, restore.stdout + restore.stderr
+    wait_healthy("api")
+    wait_healthy("worker")
+    content = alice.get(f"/api/inputs/{kept}/content")
+    assert content.status_code == 200 and content.content == kept_bytes, content.text[:200]
+    assert alice.get(f"/api/inputs/{later}").status_code == 404
+    assert alice.get(f"/api/workflows/{flow}").json()["name"] == "Kept by the paired backup"
+    # The later file's bytes are gone from the volume too, not only its row.
+    blobs = compose("exec", "-T", "api", "grep", "-rl", "written after the backup", "/var/lib/nodestro", check=False)
+    assert blobs.stdout.strip() == "", blobs.stdout

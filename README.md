@@ -46,6 +46,7 @@ They start the stack from scratch and cover:
 | A worker killed in the middle of a run | `test_a_worker_killed_in_the_middle_of_a_run` |
 | A suspended tenant is closed (sessions, logins, its runs) until it is resumed | `test_a_suspended_tenant_is_closed_until_it_is_resumed` |
 | Backup and restore with `pg_dump` | `test_backup_and_restore_with_pg_dump` |
+| A paired backup (database and data volume at one point in time) restores the tenants' files too | `test_a_paired_backup_restores_the_database_and_the_tenant_files` |
 
 `NODESTRO_E2E_ALL_SWITCHES=1 scripts/e2e.sh -v` runs the same tests with every Axentra migration switch on
 (`compose/all-switches.yaml`, development and tests only), plus `tests/e2e/test_all_switches.py`: the switches and the
