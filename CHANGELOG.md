@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Studio pin: MUP-ONA B2 cascade (2026-11-07)
+
+- Pins nodestro-studio 9c0a6bd (studio #149): runtime d9c3d6e (orkexa 028faa1 with the MUP-ONA B2 SQLite backends,
+  Axentra 60d83b3 with the A8 security test vectors, a reindex switch that embeds what its last round left), api
+  44212bc (`agent.VectorError` answers 422), sdk bda96c1.
+- RUNBOOK configuration: the PDF reading limits `NODESTRO_PDF_TIMEOUT_SECONDS`, `NODESTRO_PDF_MAX_PAGES`,
+  `NODESTRO_PDF_MAX_CHARS` and `NODESTRO_PDF_MAX_MEMORY_MB` (MUP-ONA A1, PS-1; memory limit on Linux only), in effect
+  since studio 27f8bd4.
+
 ### Operations: TODO abatement round 6 (2026-11-07)
 
 - Browser test (SRV-010): `scripts/browser-e2e.sh` runs the development stack behind Caddy as the TLS proxy
