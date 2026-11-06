@@ -185,9 +185,8 @@ None known beyond SRV-007.
 | (pointer) | nodestro-local-docker | `scripts/scan-image.sh` | Runs this repo's `scripts/scan-vulnerabilities.sh` at the pinned commit |
 | (pointer) | nodestro-desktop, nodestro-local-docker | pin distance warning | They run this repo's `scripts/pin_distance.py` |
 | – | nodestro-api / nodestro-runtime | API-005 / RT-010 (rotation of `NODESTRO_SECRET_KEY`) | Owned there; RUNBOOK limitation here |
-| – | nodestro-api | API-006, API-010 (server batches and test series stay `running` when their API process stops; published workflow APIs not served) | Owned there; RUNBOOK limitation here |
-| – | nodestro-api | API-019, API-002, API-001 (member management only via CLI; app-level hardening, A-02, A-09) | Owned there; RUNBOOK recommends proxy limits |
-| – | nodestro-api | API-008 (`check` does not warn about unknown tenant IDs in `NODESTRO_BEDROCK_TENANT_ROLES`) | Owned there |
+| – | nodestro-api | API-010 (published workflow APIs not served) | Owned there; RUNBOOK limitation here |
+| – | nodestro-api | API-019, API-001 (member management only via CLI; app-level hardening, A-09) | Owned there; RUNBOOK recommends proxy limits |
 | (pointer) | nodestro-desktop | `scripts/check_server_copies.py` | This repo holds the source copies of the shared release scripts |
 | (pointer) | nodestro-api | API-048 (server export jobs: per-tenant quota, retention; document `NODESTRO_SERVER_EXPORT_JOBS` in the RUNBOOK) | Owned there; SRV-004 keeps the switch off |
 

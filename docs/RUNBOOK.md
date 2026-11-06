@@ -459,9 +459,20 @@ a different value can break the studio. With an older pinned studio, add at leas
 
 Bind the API to `127.0.0.1` or a private network (`nodestro-server api --host 127.0.0.1`); never publish port 8080.
 
-The server has no rate limit for logins of its own, so a rate limit for `/api/auth/` in the proxy is still advisable
+The server limits login starts per API process (see "Login rate limit" below); a rate limit for `/api/auth/` in the proxy is still advisable
 (for nginx: a `limit_req_zone` in the `http` block and `limit_req` in the `location /api/auth/` above). The server serves the studio gzip-compressed, with long-lived immutable caching for the
 content-hashed files under `/assets` and `no-cache` for `index.html`, so the proxy need not compress it.
+
+**Login rate limit.** Each API process lets one client address start at most 60 logins per minute
+(`NODESTRO_LOGIN_STARTS_PER_MINUTE`, default `60`; `0` turns the limit off). Further starts get
+`429 identity.rate_limited` until the minute has passed. The limit counts per process, so with N API processes an
+address can start up to N × the limit. Keep the rate limit on the reverse proxy as the first line of defense.
+
+**Client addresses behind the proxy.** `nodestro-server api` runs uvicorn with proxy headers on, but uvicorn trusts
+`X-Forwarded-For` only from the addresses in `FORWARDED_ALLOW_IPS` (default `127.0.0.1`). When the proxy runs
+in another container or host, set `FORWARDED_ALLOW_IPS` to the proxy's address (never `*` on a network others can
+reach). Otherwise every request seems to come from the proxy, and the login rate limit applies to all users
+together.
 
 ## Run budget decisions
 
@@ -511,6 +522,19 @@ The worker has no HTTP port and exposes no metrics of its own; its work shows in
 `nodestro-server axentra status` prints the embedding state for operators: switches, both schema runners, keyring key
 ids (never keys), stored secrets by format, the identity backend and whether it would start, and the reconcile
 backlog. Run events and their live streams are unchanged; they are not notifications.
+
+`GET /api/ready` (no login) answers `200 {"status": "ready"}` only while the API process serves and reaches its
+database, and `503` while it starts, stops or loses the database: use it as the load balancer's readiness check
+and `/api/health` as the liveness check. Every answer carries `X-Request-ID` (a short id from the proxy is kept),
+and the log lines of that request name it. `NODESTRO_LOG_FORMAT=json` writes one JSON object per log line
+(`time`, `level`, `logger`, `message`, `request_id`, `exception`) for `api` and `worker`.
+
+Batches and test series: the API process that runs one holds a 60-second lease. After an API process stopped,
+its running batches show `interrupted` once their lease ran out; a member continues them in the studio.
+
+Access audit: tenant admins read logins, API key changes and the operator's commands (`create-tenant`,
+`set-role`, `remove-member`, `revoke-sessions`, `tenant suspend|resume`, recorded with the actor `operator`) at
+`GET /api/access-audit`. With `NODESTRO_AXENTRA_AUDIT=1` they are also mirrored into Axentra's audit log.
 
 ## The sandbox daemon
 
@@ -631,6 +655,11 @@ A run that was executing when its worker stopped is marked `run.interrupted` and
 it; workers drain their current run on SIGTERM (give them a stop timeout longer than your longest run step). The
 reaper also marks a run as interrupted that is stored as queued or running without an active job, once it has not
 changed for twice the lease (120 seconds with the default `NODESTRO_WORKER_LEASE_SECONDS`).
+
+**Owners of older assistant conversations.** Conversations created before conversations had an owner are visible
+to the whole tenant. Run `nodestro-server assistant backfill-owners --dry-run` to see which ones get an owner (the
+user who attached their files), then `nodestro-server assistant backfill-owners` (optionally `--tenant TENANT`).
+Conversations without a known author stay visible to the tenant. The command is idempotent.
 
 ## Load test
 
@@ -772,5 +801,6 @@ development stack only; it approves no switch for production.
   take instructions only when the workflow's orchestrator allows it (`live_steering: always`).
 - Not yet: rotation of `NODESTRO_SECRET_KEY` without Axentra (with Axentra: the keyring, see above); published workflow APIs on a server (calls are answered with 405).
   Batches and test series are driven by the API process that started them: it reads their runs, which the workers
-  execute, from the database every two seconds. If that API process stops, the batch or series stays `running`
-  until someone cancels it (no owner or lease yet); its runs themselves finish on the workers.
+  execute, from the database every two seconds, and holds a 60-second lease on it. If that API process stops, the
+  batch or series shows `interrupted` once the lease ran out and a member continues it; its runs themselves finish
+  on the workers.

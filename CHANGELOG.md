@@ -19,6 +19,10 @@
 - The image's base images are `FROM` lines that Dependabot updates; the release manifest lists bundled binaries
   (the docker CLI) with their licenses.
 - `tests/e2e/load.py`: a load test of the development stack (RUNBOOK "Load test").
+- RUNBOOK: the API's login start limit (`NODESTRO_LOGIN_STARTS_PER_MINUTE`) and `FORWARDED_ALLOW_IPS` behind a proxy,
+  `nodestro-server assistant backfill-owners`, `/api/ready`, `X-Request-ID` and JSON logs
+  (`NODESTRO_LOG_FORMAT=json`), batch leases and the access audit trail (`GET /api/access-audit`); they take
+  effect with the next studio pin (nodestro-api API-002, API-004, API-006, API-011, API-057).
 
 ### Studio pin: settings, attachments and providers (2026-11-06)
 
