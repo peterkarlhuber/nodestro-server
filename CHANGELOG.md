@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Studio pin: TODO abatement round (2026-11-06)
+
+- Pins nodestro-studio 39fb164 (studio #136): orkexa 1b61fda, runtime 3d69702, api a3bd875, examples 82d894b,
+  integrations 1e73e29, sdk 7714de0 (0.3.0): the TODO abatement round across the platform (see each repository's
+  CHANGELOG).
+
 ### Operations: TODO abatement round (2026-11-06)
 
 - CI and `release.yml` scan the server image and the `local` image for known vulnerabilities
