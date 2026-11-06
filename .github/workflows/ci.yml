@@ -26,6 +26,7 @@ jobs:
       - run: pip install ruff==0.17.0
       - run: ruff check . && ruff format --check .
       - run: python3 -I scripts/test_scan_secrets.py
+      - run: python3 -I scripts/test_release_manifest.py
       # The RUNBOOK's nginx example keeps setup links and sign-in codes out of the proxy's logs (static checks, then
       # nginx itself with the example).
       - name: RUNBOOK proxy example logs no login secrets
@@ -46,6 +47,9 @@ jobs:
           text = open("image/Dockerfile").read()
           args = dict(re.findall(r"^ARG (\w+)=(\S+)", text, re.M))
           bases = [args.get(m.strip("${}"), m) for m in re.findall(r"^FROM (\S+)", text, re.M)]
+          # The bases are FROM lines with literal references (Dependabot reads those), not build arguments.
+          if any("$" in base for base in bases):
+              sys.exit(f"image/Dockerfile: a base image comes from a build argument: {bases}")
           stages = set(re.findall(r"^FROM \S+ AS (\S+)", text, re.M)) | {"scratch"}
           loose = [base for base in bases if base not in stages and "@sha256:" not in base]
           # The privileged sandbox daemon of the compose stack (compose/sandbox/Dockerfile) as well.
