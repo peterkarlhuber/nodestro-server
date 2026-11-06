@@ -13,6 +13,8 @@ Every test drives the running stack from the outside (see conftest.py):
   volume of the same point in time;
 - the live run chat (LRC-1): a question about a run in a worker is answered by the API process, an instruction
   stored by the API reaches the orchestrator in the worker at its next decision, and another tenant sees nothing;
+- Amazon Bedrock without an operator role: a tenant cannot use it although the server's own processes have AWS
+  credentials, and tool code never sees an AWS variable;
 - run budget decisions (BUDGET-1): a run in the worker pauses before a request its budget cannot cover, a raise in
   the API process continues it in a worker, and the request is sent exactly once.
 """
@@ -25,6 +27,7 @@ import secrets
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 from typing import Any
 
@@ -348,6 +351,118 @@ def test_without_the_sandbox_daemon_tool_code_does_not_run_at_all(tenants: Tenan
         compose("start", "sandbox")
         wait_healthy("sandbox")
         _sandbox_approved(alice)  # the restarted daemon is proven again before later tests run tool code
+
+
+# ---- Amazon Bedrock without an operator role -----------------------------------------------------
+
+AWS_DECOY = "e2e-decoy-access-key-id"  # tests/e2e/aws-decoy.yaml: the server's own AWS credentials (not real ones)
+
+#: A tool that keeps its container busy for a few seconds, so the test can read the container's environment.
+#: Tool code cannot read environment variables itself (its static check refuses ``os``), so the test reads the
+#: container's configuration on the sandbox daemon instead.
+BUSY_TOOL = '''\
+def busy(rounds: int) -> int:
+    """Count for a while.
+
+    Args:
+        rounds: How many numbers to add up.
+
+    Returns:
+        The sum of the remainders.
+    """
+    total = 0
+    for number in range(rounds):
+        total += number % 7
+    return total
+'''
+
+BUSY_TOOL_TESTS = """\
+from tool import busy
+
+
+def test_busy():
+    assert busy(8) == 21
+"""
+
+
+def _server_has_aws_credentials() -> None:
+    for service in ("api", "worker"):
+        found = compose("exec", "-T", service, "printenv", "AWS_ACCESS_KEY_ID", check=False).stdout.strip()
+        assert found == AWS_DECOY, f"{service}: scripts/e2e.sh layers tests/e2e/aws-decoy.yaml ({found!r})"
+
+
+def test_bedrock_is_not_available_without_an_operator_role(tenants: Tenants) -> None:
+    """The server's processes have AWS credentials and a region, but NODESTRO_BEDROCK_TENANT_ROLES assigns no role:
+    a tenant can neither save Bedrock settings nor get a verified connection, and no AWS call is made."""
+    _server_has_aws_credentials()
+    _, owner = new_tenant("alice", "bedrock")
+    bedrock = next(item for item in owner.get("/api/settings").json()["providers"] if item["id"] == "bedrock")
+    assert bedrock["auth_methods"] == ["operator_role"] and bedrock["operator_role"] is False, bedrock
+    assert bedrock["configured"] is False, bedrock
+    assert bedrock["verification"]["code"] == "provider.bedrock_not_available", bedrock
+    saved = owner.put("/api/settings", json={"providers": {"bedrock": {"region": "eu-central-1"}}})
+    assert saved.status_code == 400 and saved.json()["code"] == "provider.bedrock_not_available", saved.text
+    verified = owner.post("/api/settings/providers/bedrock/verify", json={})
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["verification"] == {
+        "state": "not_configured",
+        "checked_at": None,  # nothing was checked against AWS
+        "code": "provider.bedrock_not_available",
+    }, verified.text
+    # A run of a workflow with a Bedrock model is refused before it starts, so it never uses the server's credentials.
+    flow = _workflow(owner, _flow("Bedrock without a role", "hello", model="bedrock:eu.anthropic.claude-sonnet-4-5"))
+    refused = owner.post(f"/api/workflows/{flow}/runs", json={"input": "go"})
+    assert refused.status_code == 400 and refused.json()["code"] == "provider.bedrock_not_available", refused.text
+
+
+def _running_tool_container_env(browser: Browser, rounds: int) -> list[str] | None:
+    """Call ``busy`` and read the environment of its container on the sandbox daemon while it runs (``None`` when the
+    call ended before its container was seen)."""
+    answer: dict[str, Any] = {}
+    call = threading.Thread(
+        target=lambda: answer.update(
+            response=browser.post("/api/tools/busy/run", json={"input": {"rounds": rounds}}, timeout=600)
+        )
+    )
+    call.start()
+    found: list[str] | None = None
+    try:
+        while call.is_alive() and found is None:
+            names = compose("exec", "-T", "sandbox", "docker", "ps", "--format", "{{.Names}}").stdout.split()
+            for name in (item for item in names if item.startswith("orkexa-sandbox-")):
+                inspected = compose(
+                    "exec", "-T", "sandbox", "docker", "inspect", "--format", "{{json .Config.Env}}", name, check=False
+                )
+                if inspected.returncode == 0:
+                    found = list(json.loads(inspected.stdout) or [])
+                    break
+            time.sleep(0.1)
+    finally:
+        call.join()
+    response = answer["response"]
+    assert response.status_code == 200 and response.json()["is_error"] is False, response.text
+    return found
+
+
+def test_tool_code_sees_no_aws_variables(tenants: Tenants) -> None:
+    """The server's API process has AWS credentials; the container that runs a tool on the sandbox daemon gets none
+    of its variables (Orkexa's run shape passes no ``-e``)."""
+    _server_has_aws_credentials()
+    alice = tenants.alice
+    _sandbox_approved(alice)
+    saved = alice.post(
+        "/api/tools", json={"function_name": "busy", "code": BUSY_TOOL, "tests": BUSY_TOOL_TESTS}, timeout=900
+    )
+    assert saved.status_code in (200, 201) and saved.json()["tool"] is not None, saved.text
+    rounds = 20_000_000
+    env = None
+    for _ in range(3):  # a fast machine may finish before the container is seen: count longer
+        env = _running_tool_container_env(alice, rounds)
+        if env is not None:
+            break
+        rounds *= 2
+    assert env is not None, "no tool container was seen while the tool ran"
+    assert not [item for item in env if item.upper().startswith("AWS_")], env
 
 
 # ---- workers ------------------------------------------------------------------------------------

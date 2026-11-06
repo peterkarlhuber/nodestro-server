@@ -1,0 +1,16 @@
+# Layered by scripts/e2e.sh on every run (tests only): the server's own processes get AWS credentials and a region, as
+# on an EC2 host or with an operator's environment. Tenants must never use them: without a role in
+# NODESTRO_BEDROCK_TENANT_ROLES Amazon Bedrock stays unavailable, and tool code never sees any AWS_ variable
+# (test_bedrock_is_not_available_without_an_operator_role, test_tool_code_sees_no_aws_variables). The values are
+# not credentials of any AWS account.
+x-aws-decoy: &aws-decoy
+  environment:
+    AWS_ACCESS_KEY_ID: e2e-decoy-access-key-id
+    AWS_SECRET_ACCESS_KEY: e2e-decoy-secret-access-key
+    AWS_SESSION_TOKEN: e2e-decoy-session-token
+    AWS_REGION: eu-central-1
+    AWS_DEFAULT_REGION: eu-central-1
+
+services:
+  api: *aws-decoy
+  worker: *aws-decoy

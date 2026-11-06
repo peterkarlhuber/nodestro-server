@@ -43,6 +43,7 @@ They start the stack from scratch and cover:
 | No access across tenants; provider keys encrypted at rest | `test_tenants_never_see_each_others_data` |
 | Only the model endpoints the operator allowed | `test_tenants_use_only_the_model_endpoints_the_operator_allowed` |
 | Untrusted tool code runs only in containers of the sandbox daemon, never as a fallback on the host | `test_tool_code_runs_only_in_a_container_of_the_sandbox_daemon`, `test_without_the_sandbox_daemon_tool_code_does_not_run_at_all` |
+| Amazon Bedrock is unavailable to a tenant without an operator role, although the server has AWS credentials; tool containers get no AWS variables | `test_bedrock_is_not_available_without_an_operator_role`, `test_tool_code_sees_no_aws_variables` |
 | A worker killed in the middle of a run | `test_a_worker_killed_in_the_middle_of_a_run` |
 | A suspended tenant is closed (sessions, logins, its runs) until it is resumed | `test_a_suspended_tenant_is_closed_until_it_is_resumed` |
 | Backup and restore with `pg_dump` | `test_backup_and_restore_with_pg_dump` |

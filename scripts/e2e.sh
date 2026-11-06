@@ -10,7 +10,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-export COMPOSE_FILE="$root/compose/compose.yaml"
+# tests/e2e/aws-decoy.yaml: the server's processes get AWS credentials that tenants and tool code must never see.
+export COMPOSE_FILE="$root/compose/compose.yaml:$root/tests/e2e/aws-decoy.yaml"
 if [ -n "${NODESTRO_EXTRA_CA_FILE:-}" ]; then COMPOSE_FILE="$COMPOSE_FILE:$root/compose/extra-ca.yaml"; fi
 export NODESTRO_E2E_ALL_SWITCHES="${NODESTRO_E2E_ALL_SWITCHES:-0}"
 case "$NODESTRO_E2E_ALL_SWITCHES" in
