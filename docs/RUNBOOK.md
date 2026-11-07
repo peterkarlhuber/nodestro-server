@@ -286,10 +286,39 @@ the table `nodestro_chunk_vectors` (migration `0010`, tenant-scoped like every o
   `pgvector/pgvector:0.8.7-pg17`, the official `postgres:17` image plus the extension, pinned by digest in
   `compose/compose.yaml`; `db-roles` installs the extension as the superuser. For your own PostgreSQL 17, install
   the pgvector package of your distribution or provider and run `CREATE EXTENSION IF NOT EXISTS vector;` as a
-  superuser in the server's database (or `roles.sql` again). Migration `0010` tries the same, but as the owner role it
+  superuser in the server's database (or `roles.sql` again); with `NODESTRO_DATABASE_SCHEMA`, add
+  `SCHEMA "<schema>"`, because the server sees only that schema. Migration `0010` tries the same, but as the owner role it
   usually may not and goes on without it.
 - **Without pgvector**: semantic search still works; the runtime ranks the same rows (slower for large knowledge
   bases). Installing pgvector later needs no reindex: the stored vectors are used as they are.
+- **pgvector installed after the first migration** (nodestro-runtime RT-048): migration `0010` installs pgvector
+  only if the PostgreSQL server had it at that moment and the migrating role could create it (pgvector is not a
+  trusted extension, so usually only a superuser can). Check the state in the server's database, connected as
+  `nodestro_owner` or `nodestro_app` (with `NODESTRO_DATABASE_SCHEMA`, run `SET search_path TO "<schema>";` first:
+  the server sees only that schema):
+
+  ```sql
+  SELECT to_regtype('vector') IS NOT NULL AS usable,
+         (SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+           WHERE e.extname = 'vector') AS installed_in,
+         (SELECT default_version FROM pg_available_extensions WHERE name = 'vector') AS available;
+  ```
+
+  - `usable` is true: pgvector ranks the vectors (the runtime calls this state `active`).
+  - `installed_in` names another schema (`other_schema`; for example pgvector in `public` while the server runs with
+    `NODESTRO_DATABASE_SCHEMA`): as a superuser, `ALTER EXTENSION vector SET SCHEMA "<schema>";`, unless other
+    applications of that database use it where it is.
+  - Neither, but `available` has a version (`installable`): as a superuser in the server's database,
+    `CREATE EXTENSION vector SCHEMA "<NODESTRO_DATABASE_SCHEMA or public>";`.
+  - `available` is empty (`unavailable`): install the pgvector package for the server's PostgreSQL major version
+    first, then the step above.
+
+  Then restart the API and worker processes: each knowledge index checks pgvector once, so running processes keep
+  ranking the vectors themselves until then. No reindex is needed: the vectors are stored as `real[]` either way.
+  `nodestro-server check` prints `warning: knowledge.pgvector_<state>` with the exact command when pgvector does not
+  rank the knowledge vectors (nothing for `active`; the server is still reported `ready`), so run it again after the
+  restart. `knowledge.pgvector_unknown` means the state could not be read: check the runtime role's database access.
+  Semantic search works in every state, ranked by the runtime when pgvector does not rank it.
 - **Reindex jobs:** building or rebuilding a semantic index is a `reindex` job of the job queue that a worker runs
   with a lease, like runs. A restarted API process or worker loses nothing: another worker continues where the job
   stopped, and every API process shows its progress.

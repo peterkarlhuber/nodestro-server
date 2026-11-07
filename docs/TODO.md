@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-07 against `master` at `9d918aa` (TODO abatement round 4).
+> **Last full review:** 2026-11-07 against `master` at `30e57bb` (TODO abatement round 5).
 
 ## Summary
 
@@ -41,7 +41,7 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs decision · **Refs:** RUNBOOK "Releases and rollback", project release notes 2026-10-31
 - **What:** The only server candidate (`v0.2.0-preview.1`, built 2026-10-31 from studio `78710ce`) predates the
   backend audit, Bedrock and Live Run Chat work and is outdated. Tags, GHCR pushes and releases are not approved.
-- **Next step:** From the current pins (`studio.json`; studio `58bb17d` since 2026-11-06), run `release.yml` again (it now
+- **Next step:** From the current pins (`studio.json`; studio `27f8bd4` since 2026-11-07), run `release.yml` again (it now
   also writes the vulnerability reports), record a Go/No-Go, and ask the owner whether to publish. Do not run `publish.yml` without that approval.
 
 ## Security
@@ -100,12 +100,13 @@ The image definition here is shared with nodestro-local-docker by design; see it
 ### SRV-007 · Monitoring section in the runbook
 
 - **Priority:** P2 Medium · **Status:** Blocked (on nodestro-api observability, backend audit D-10) · **Refs:** backend audit D-10
-- **What:** The runbook covers health checks, readiness (`/api/ready`), request ids, JSON logs and the metrics
-  endpoint ("Health checks", "Metrics and status"). Since 2026-11-07 the development stack and the production
-  example check the API with `/api/ready` and log JSON, and `test_readiness_request_ids_and_json_logs` checks all
-  three. Left: workers have no liveness signal besides `nodestro-server check`, and there is no tracing.
-- **Next step:** When the API adds a worker liveness signal (and optional tracing), document it and use it in the
-  worker's health check.
+- **What:** The runbook covers health checks, readiness (`/api/ready`), request ids, JSON logs, the metrics endpoint
+  and the worker's own liveness ("Health checks", "Metrics and status"). The development stack and the production
+  example check the API with `/api/ready`, log JSON (`test_readiness_request_ids_and_json_logs`) and, since server
+  #65, check each worker container with `nodestro-server worker-health` against its heartbeat file. Left: the API's
+  readiness and metrics do not show whether any worker is alive, workers have no metrics, and there is no tracing.
+- **Next step:** When nodestro-api exposes worker liveness in `/api/metrics` (a heartbeat row in the database) and
+  optional tracing, document both in "Metrics and status".
 - **Depends on:** nodestro-api API-011 (observability, D-10)
 
 ## Tests and quality assurance
