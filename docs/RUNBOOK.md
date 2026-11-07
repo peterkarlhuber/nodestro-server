@@ -101,6 +101,9 @@ secrets); giving both forms is refused. Nothing has a default that weakens the s
 | `NODESTRO_RUN_THREADS` | Threads for agents and orchestrator decisions of one tenant in one process (default 32); an agent beyond the limit waits for a thread |
 | `NODESTRO_DATA_DIR` | Files of the tenants (`/var/lib/nodestro` in the image): a shared volume for API and workers |
 | `DOCKER_HOST`, `DOCKER_TLS_VERIFY`, `DOCKER_CERT_PATH` | The sandbox daemon (TLS with client certificates) |
+| `NODESTRO_BEHIND_PROXY` | `1`: the API runs behind a reverse proxy, so `FORWARDED_ALLOW_IPS` must be set. See [Client addresses behind a reverse proxy](#client-addresses-behind-a-reverse-proxy) |
+| `FORWARDED_ALLOW_IPS` | uvicorn's list of proxy addresses (comma-separated IP addresses or networks) whose `X-Forwarded-For` the API trusts; default `127.0.0.1`. Never `*` where others can reach the API port |
+| `NODESTRO_REQUIRE_CLIENT_ADDRESS` | `1`: `check` and `api` refuse to start (`proxy.client_address_unknown`) when `NODESTRO_BEHIND_PROXY=1` and `FORWARDED_ALLOW_IPS` is not set, instead of only warning |
 | `NODESTRO_BUILD_CA_FILE`, `SSL_CERT_FILE`, `AWS_CA_BUNDLE` | Only behind a TLS-inspecting proxy: its certificate bundle. The AWS SDK (Bedrock, STS) ignores `SSL_CERT_FILE` and reads only `AWS_CA_BUNDLE`; `compose/extra-ca.yaml` sets all three |
 
 `nodestro-server check` validates these settings, the database (role and schema), the container runtime and the
@@ -253,6 +256,26 @@ Moving an existing installation (one role that owns the tables, or a superuser) 
 The development stack does this by itself: its `db-roles` service runs `roles.sql` on every start, and
 `scripts/dev-secrets.py` rewrites a `database_url` that still names the superuser `nodestro`.
 
+**Axentra and the table owner (MUP-ONA A6).** A role that owns tables protected by row-level security can switch
+row-level security off, so it must not be the role the API and the workers connect as:
+
+- **This server:** with `NODESTRO_AXENTRA=on`, Nodestro checks the runtime role itself before Axentra starts, in every
+  environment: a superuser, a `BYPASSRLS` role or a role that owns tables stops `check`, `api` and `worker`
+  (`storage.role_unsafe` / `axentra.unavailable`) unless `NODESTRO_AXENTRA_ALLOW_SUPERUSER=1` (development only). It
+  passes Axentra `allow_superuser` and `allow_table_owner` from that one variable; `[database]` values in
+  `NODESTRO_AXENTRA_CONFIG` and `AXENTRA__*` variables do not change them. Axentra runs as `production` when
+  `NODESTRO_PUBLIC_ORIGIN` is https. Nothing changes for a server with the roles above (`nodestro_owner` migrates,
+  `nodestro_app` connects).
+- **Axentra on its own** (its own configuration, not this server): `database.allow_table_owner` is unset by default,
+  which means `false` in production (`environment = "production"`) and `true` in development and test. In production
+  `Axentra.start()` then refuses an application role that owns the tables (`configuration_error`, "refusing to start:
+  the database role owns the tables protected by row-level security …"). Use a separate owner role for migrations
+  (`database.migration_url_ref`, `axentra migrate --grant-runtime-role <role>`) and connect as a runtime role that owns
+  nothing, or accept the risk explicitly with `allow_table_owner = true` (`AXENTRA__DATABASE__ALLOW_TABLE_OWNER=true`),
+  which starts with a warning. `allow_table_owner = false` refuses an owner role in every environment. This is a
+  breaking change for production installations of Axentra that connect as the owner; it takes effect with the
+  Axentra version that contains MUP-ONA A6.
+
 ## Semantic knowledge search and local models
 
 Knowledge search has three modes (nodestro-runtime `docs/local-models.md`): full text (the default, needs nothing),
@@ -282,6 +305,25 @@ The server runs **no local model server** of its own. Tenants use models on self
 that the operator runs and lists in `NODESTRO_MODEL_ENDPOINTS` (for example `http://ollama.internal:11434`); the
 embedding model of semantic search (default `qwen3-embedding:0.6b`) runs on such an endpoint too. Run Ollama on a host
 with enough memory (GPU recommended), on a network the workers and the API reach and the internet does not.
+
+**Keep `NODESTRO_MODEL_ENDPOINTS` narrow (MUP-ONA A7, PS-7).** Tenant admins choose the base URL of an
+OpenAI-compatible, Ollama or vLLM endpoint themselves. The server sends those requests from inside its network, so the
+only protection against a tenant reaching internal services through it (server-side request forgery) is this list:
+an endpoint is used only when its origin (`scheme://host:port`, compared exactly; no wildcards, no paths) is listed,
+checked again on every use, and redirects are not followed. There is no second, address-based check for these
+endpoints. Therefore:
+
+- list only the origins of model servers you run for tenants, each with its port (`http://ollama.internal:11434`,
+  not a whole host or network); leave the variable empty when tenants use no self-hosted endpoint;
+- never list an origin that serves anything else: the database, the Docker or sandbox daemon, the metrics endpoint,
+  a cloud metadata service (`169.254.169.254`), an admin interface or a proxy that forwards elsewhere;
+- prefer `https` and a name that resolves only to that model server; review the list when model servers move, and
+  remove origins no tenant uses;
+- put the model servers on a network segment that reaches nothing else the tenants must not use.
+
+This is an accepted risk of the operator's configuration (PS-7): a list kept too wide lets tenants send requests to
+whatever it names. The public provider APIs (Anthropic, OpenAI, Gemini, Bedrock) are not affected; their addresses are
+fixed.
 
 ## Amazon Bedrock for tenants
 
@@ -479,7 +521,52 @@ address can start up to N × the limit. Keep the rate limit on the reverse proxy
 `X-Forwarded-For` only from the addresses in `FORWARDED_ALLOW_IPS` (default `127.0.0.1`). When the proxy runs
 in another container or host, set `FORWARDED_ALLOW_IPS` to the proxy's address (never `*` on a network others can
 reach). Otherwise every request seems to come from the proxy, and the login rate limit applies to all users
-together.
+together. Set `NODESTRO_BEHIND_PROXY=1` as well, so the server reports a missing `FORWARDED_ALLOW_IPS`; details and
+the examples for nginx, Caddy and Traefik are in the next section.
+
+## Client addresses behind a reverse proxy
+
+The API limits some requests per client address: login starts (`NODESTRO_LOGIN_STARTS_PER_MINUTE`) and failed API
+keys of published workflow APIs. Behind a reverse proxy the API sees the proxy's address unless the proxy passes
+the client's address in `X-Forwarded-For` **and** the API trusts that header from the proxy. Then one client that
+uses up its budget would lock out every other client.
+
+| Variable | Set it to |
+| --- | --- |
+| `NODESTRO_BEHIND_PROXY` | `1` whenever a reverse proxy or load balancer forwards to the API |
+| `FORWARDED_ALLOW_IPS` | the address(es) from which the proxy connects to the API, comma-separated (IP addresses or networks such as `10.0.5.0/28`); only those may set the client address. Default `127.0.0.1` (a proxy on the same host). Never `*` where other hosts or containers can reach the API port: anyone could then claim any address |
+| `NODESTRO_REQUIRE_CLIENT_ADDRESS` | `1` to make a missing `FORWARDED_ALLOW_IPS` stop the start instead of a warning |
+
+With `NODESTRO_BEHIND_PROXY=1` and no `FORWARDED_ALLOW_IPS`, `nodestro-server check` prints
+`warning: proxy.client_address_unknown: …` and `nodestro-server api` logs the same warning and starts; with
+`NODESTRO_REQUIRE_CLIENT_ADDRESS=1` both stop with that code (`check` as `not ready`). The check cannot see whether the
+addresses in `FORWARDED_ALLOW_IPS` are the right ones: after a change, log in once and look for your own address (not
+the proxy's) in the API's access log. The variables need nodestro-api with MUP-ONA A3 (the studio pin after it);
+`FORWARDED_ALLOW_IPS` works with every version.
+
+The proxy must replace or append to `X-Forwarded-For`, never pass a client's header through unchanged when it is the
+first hop:
+
+- **nginx:** `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` as in the example of
+  [TLS reverse proxy](#tls-reverse-proxy). When nginx is the first hop, `$remote_addr` is the client; behind a load
+  balancer, set `set_real_ip_from <load balancer>;` and `real_ip_header X-Forwarded-For;` so `$remote_addr` (and the
+  appended address) is the client's.
+- **Caddy:** `reverse_proxy` sets `X-Forwarded-For` by itself (the production example's `caddy reverse-proxy`
+  does). It trusts incoming forwarding headers only from `trusted_proxies` (global `servers` option); leave it unset
+  when Caddy is the first hop.
+- **Traefik:** forwards `X-Forwarded-For` by itself. Incoming forwarding headers are trusted only from
+  `entryPoints.<name>.forwardedHeaders.trustedIPs`; set it only to an upstream load balancer, never
+  `insecure: true`.
+
+`FORWARDED_ALLOW_IPS` then names the address the proxy connects from: `127.0.0.1` on the same host, the proxy
+container's address in a compose network (`compose/production.example.yaml` gives Caddy a fixed address for this),
+or the proxy hosts' addresses. Published API keys: failures of a well-formed key are counted per key id (its first 8
+characters, never the secret) and only with a ten times higher limit per address, so a client's wrong key does not
+throttle other keys even when every request has the proxy's address.
+
+Residual risk (accepted): an operator who ignores the warning runs with shared per-address limits; one client can
+then exhaust the login start budget of everyone behind the proxy for up to a minute. Keep the proxy's own rate limit
+for `/api/auth/` (see above) as the first line.
 
 ## Run budget decisions
 
@@ -804,7 +891,8 @@ development stack only; it approves no switch for production.
   membership ends.
 - Every request is bound to the session's tenant; a tenant's data is never visible to another tenant.
 - Tenants reach only the model endpoints in `NODESTRO_MODEL_ENDPOINTS` besides the providers' public APIs, so the
-  server cannot be used to probe its own network.
+  server cannot be used to probe its own network, as long as the list stays narrow (see
+  [Semantic knowledge search and local models](#semantic-knowledge-search-and-local-models)).
 - Amazon Bedrock: tenants never use the server's own AWS credentials, only the role the operator assigned them in
   `NODESTRO_BEDROCK_TENANT_ROLES`; there are no custom Bedrock endpoints. The server's base identity needs only
   `sts:AssumeRole`. On EC2, require IMDSv2 with hop limit 1 (see [Amazon Bedrock for tenants](#amazon-bedrock-for-tenants)).

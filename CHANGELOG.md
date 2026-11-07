@@ -17,6 +17,20 @@
 - RUNBOOK: members in the studio, `NODESTRO_TENANT_IDLE_MINUTES`, `NODESTRO_SERVER_EXPORT_TENANT_QUOTA_BYTES` and
   reindex jobs.
 
+### Operations: MUP-ONA security documentation
+
+- RUNBOOK "Client addresses behind a reverse proxy" (MUP-ONA A3, PS-3): `NODESTRO_BEHIND_PROXY`,
+  `FORWARDED_ALLOW_IPS` and `NODESTRO_REQUIRE_CLIENT_ADDRESS`, what `check` and `api` report, `X-Forwarded-For` in
+  nginx, Caddy and Traefik, the per-key count of failed published API keys and the accepted residual risk.
+  `compose/production.example.yaml` gives Caddy a fixed address and sets `FORWARDED_ALLOW_IPS` and
+  `NODESTRO_BEHIND_PROXY=1` for the API. The new variables take effect with the studio pin that contains
+  nodestro-api MUP-ONA A3.
+- RUNBOOK "Database roles": Axentra and the table owner (MUP-ONA A6, PS-6): this server checks the runtime role
+  itself and passes Axentra `allow_table_owner` from `NODESTRO_AXENTRA_ALLOW_SUPERUSER` (unchanged); Axentra on its
+  own refuses an owner role in production unless `database.allow_table_owner = true`.
+- RUNBOOK: how to keep `NODESTRO_MODEL_ENDPOINTS` narrow (MUP-ONA A7, PS-7, accepted risk): exact origins only,
+  never internal services or metadata addresses, model servers on their own network segment.
+
 ### Studio pin: TODO abatement round 2 (2026-11-06)
 
 - Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant
