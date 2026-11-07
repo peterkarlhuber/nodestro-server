@@ -8,6 +8,16 @@
   set `NODESTRO_LOG_FORMAT=json`; a new acceptance test checks readiness, request ids and the JSON log lines.
 - `NODESTRO_POSTGRES_IMAGE` replaces the development stack's database image for tests on other PostgreSQL major
   versions; the RUNBOOK records what PostgreSQL 16 and 18 did.
+- The worker health check in `compose/compose.yaml` and `compose/production.example.yaml` runs
+  `nodestro-server worker-health` against the heartbeat file `NODESTRO_WORKER_HEARTBEAT_FILE=/tmp/nodestro-worker.json`
+  (nodestro-api API-011), so a hung worker turns unhealthy; the RUNBOOK explains the exit codes and that workers build
+  server export packages when `NODESTRO_SERVER_EXPORT_JOBS` is switched on.
+
+### Studio pin: TODO abatement round 4 (2026-11-07)
+
+- Pins nodestro-studio f69020a (studio #143: runtime f26dac4 with LD-020, Bedrock regions in usage, registry facts
+  and `pgvector_status()`; api 77f53be with queued export builds and the worker heartbeat; integrations c3623bd with
+  bounded OCR).
 
 ### Studio pin: TODO abatement round 3 (2026-11-06)
 

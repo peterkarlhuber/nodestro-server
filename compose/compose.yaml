@@ -171,11 +171,15 @@ services:
   worker:
     <<: *server
     command: ["worker"]
+    environment:
+      <<: *server-environment
+      # Liveness of the worker itself (docs/RUNBOOK.md, "Health checks"): a heartbeat file inside this container.
+      NODESTRO_WORKER_HEARTBEAT_FILE: /tmp/nodestro-worker.json
     depends_on:
       migrate: {condition: service_completed_successfully}
       sandbox: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "nodestro-server", "check", "--skip-identity-provider"]
+      test: ["CMD", "nodestro-server", "worker-health"]
       interval: 10s
       timeout: 10s
       retries: 30
