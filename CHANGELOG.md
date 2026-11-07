@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Image: Debian security updates at build time (2026-11-07)
+
+- The image's base stage runs `apt-get upgrade` after `apt-get update`, so Debian security fixes reach the image
+  before the pinned `python:3.13-slim` digest is rebuilt upstream. Trigger: the image scan of local-docker #47 failed
+  on zlib1g CVE-2026-76844 and CVE-2026-85091 (HIGH, fixed in 1:1.3.dfsg+really1.3.1-1+deb13u1).
+
 ### Studio pin: MUP-ONA B2 cascade (2026-11-07)
 
 - Pins nodestro-studio 5318cea (studio #153, MUP-ONA B4 cascade: runtime df4aeb3 with the tenant SQL rule engine,
