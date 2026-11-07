@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Operations: TODO abatement round 5 (2026-11-07)
+
+- RUNBOOK "Semantic knowledge search": what to do when pgvector was installed after migration `0010` (nodestro-runtime
+  RT-048): one SQL query shows whether pgvector ranks the vectors, with the command for each state (`installable`,
+  `other_schema`, `unavailable`); then restart the API and worker processes, no reindex. The install hint names the
+  schema for `NODESTRO_DATABASE_SCHEMA`.
+
 ### Operations: TODO abatement round 4 (2026-11-07)
 
 - The development stack and `compose/production.example.yaml` check the API with `GET /api/ready` (readiness) and
