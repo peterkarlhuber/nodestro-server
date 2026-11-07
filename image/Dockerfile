@@ -114,6 +114,9 @@ ARG DOCKER_CLI_SHA256_ARM64=873b3e0207857c3b2f28392fb922f3ea6efe37620c16d4d4aaf2
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
     apt-get update; \
+    # Debian security fixes reach the image before the next rebuild of the pinned base image (the image scan fails on
+    # a CRITICAL/HIGH finding that has a fixed version, e.g. zlib1g CVE-2026-76844/CVE-2026-85091 on 2026-11-07).
+    apt-get upgrade -y --no-install-recommends; \
     apt-get install -y --no-install-recommends ca-certificates curl tini; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x86_64; sum="${DOCKER_CLI_SHA256_AMD64}" ;; \
