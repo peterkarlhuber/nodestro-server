@@ -40,6 +40,7 @@ jobs:
           NODESTRO_EXTRA_CA_FILE=/etc/ssl/certs/ca-certificates.crt \
             docker compose -f compose/compose.yaml -f compose/extra-ca.yaml config --quiet
           docker compose -f compose/compose.yaml -f compose/all-switches.yaml config --quiet
+          docker compose -f compose/compose.yaml -f tests/e2e/tls-proxy.yaml config --quiet
           # The production example (not a tested deployment form): valid with the settings it requires.
           mkdir -p compose/secrets
           for name in database_url database_migration_url oidc_client_secret secret_key; do echo x > "compose/secrets/$name"; done
@@ -64,6 +65,8 @@ jobs:
           # The stack's Python and PostgreSQL (pgvector) images too.
           compose = re.findall(r"image: (?:&\S+ )?((?:python|pgvector/pgvector):\S+)", open("compose/compose.yaml").read())
           loose += [image for image in compose if "@sha256:" not in image]
+          # The browser test's TLS proxy (Caddy).
+          loose += [i for i in re.findall(r"image: (\S+)", open("tests/e2e/tls-proxy.yaml").read()) if "@sha256:" not in i]
           sys.exit(f"not pinned by digest: {loose}" if loose else 0)
           PY
       - name: studio.json names a full commit
@@ -118,6 +121,31 @@ jobs:
           NODESTRO_IMAGE: nodestro-server:ci
           NODESTRO_E2E_ALL_SWITCHES: "1"
         run: scripts/e2e.sh -v
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install Playwright with Chromium (the browser test only)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir playwright && cd playwright
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Browser test, Chromium through the TLS proxy
+        # scripts/browser-e2e.sh: the same image behind Caddy on https://localhost:8443 (tests/e2e/tls-proxy.yaml);
+        # tests/e2e/browser.mjs logs in through Dex in Chromium, checks the __Host- session cookie, renders the studio
+        # and covers the refusals (untrusted certificate, wrong password, no tenant, sign-in code in another browser).
+        env:
+          NODESTRO_IMAGE: nodestro-server:ci
+          NODE_PATH: ${{ runner.temp }}/playwright/node_modules
+          NODESTRO_BROWSER_SHOTS: ${{ runner.temp }}/browser
+        run: scripts/browser-e2e.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: browser-test
+          path: ${{ runner.temp }}/browser/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Release manifest and secret scan (dry run)
         run: |
           docker save -o "$RUNNER_TEMP/image.tar" nodestro-server:ci

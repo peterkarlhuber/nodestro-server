@@ -58,10 +58,24 @@ Axentra's storage, the in-app inbox (`/api/notifications`) and the audit/usage m
 Behind a TLS-inspecting proxy, set `NODESTRO_EXTRA_CA_FILE` to its certificate bundle (the scripts add
 `compose/extra-ca.yaml`).
 
+### Browser test (Chromium through the TLS proxy)
+
+```sh
+NODESTRO_IMAGE=nodestro-server:dev scripts/browser-e2e.sh      # Node.js 22+ and Playwright with Chromium
+```
+
+It starts the stack behind Caddy on `https://localhost:8443` (`tests/e2e/tls-proxy.yaml`, `NODESTRO_TLS_PORT`
+changes the port) and runs `tests/e2e/browser.mjs` in Chromium: the proxy's certificate, a first login through a
+setup link at Dex, the `__Host-nodestro-session` cookie (Secure, HttpOnly, SameSite=Lax, Path=/, no Domain), HSTS, the
+signed-in studio without console errors, sign out and a second login started by the studio itself; and the refusals:
+an untrusted certificate, plain http on the TLS port, a wrong password, an account without a tenant, and a sign-in
+code taken to another browser. Chromium trusts only the proxy's certificate (its public key), nothing else. CI runs
+it in the `e2e` job.
+
 ## Limitations
 
-- Preview: builds are **unsigned**, only linux/amd64 is built and tested, and no browser has been tested against
-  a server (see the runbook's system requirements).
+- Preview: builds are **unsigned**, only linux/amd64 is built and tested, and of the browsers only Chromium is
+  tested against a server (see the runbook's system requirements).
 - The development stack is Linux-only (the server containers use the host's network). Production installations
   follow the runbook on any Docker host.
 - Dex and the model stub are for development and tests only.
