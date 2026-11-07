@@ -79,6 +79,7 @@ jobs:
   inventory:
     # The test IDs pytest collects (CI-FAST AP0 baseline): their count and the sha256 of the sorted list.
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # CI-FAST AP1: no run data yet (nightly-only); as the other repos' inventory jobs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -108,6 +109,7 @@ jobs:
     # Proves that a red nightly opens an issue (CI-FAST W0 acceptance).
     if: inputs.canary_fail
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # CI-FAST AP1: no run data yet (nightly-only); a short job
     steps:
       - run: exit 1
 
@@ -115,6 +117,7 @@ jobs:
     needs: [ci, upgrade, studio-master, inventory, canary]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # CI-FAST AP1: no run data yet (nightly-only); a short job
     permissions:
       issues: write
     steps:
