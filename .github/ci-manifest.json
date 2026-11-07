@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "comment": "Mandatory checks (S2) per CI-FAST. A PR is ok only if every listed check ran on the PR head SHA and succeeded. Changing this list needs a reason in the PR.",
+  "pull_request": {
+    "ci.yml": [
+      "lint",
+      "e2e",
+      "e2e-arm64"
+    ]
+  },
+  "pull_request_path_filtered": {
+    "upgrade.yml": [
+      "upgrade"
+    ]
+  },
+  "comment_path_filtered": "Checks that run on a pull request only when it changes the files in the workflow's paths filter; required only when they ran on the PR head SHA.",
+  "nightly": {
+    "nightly.yml": [
+      "report"
+    ]
+  }
+}

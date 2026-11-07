@@ -1,0 +1,139 @@
+# The nightly run of the default branch (CI-FAST W0, S4): every PR and push check of master once more (ci.yml), the
+# real upgrade (upgrade.yml, otherwise only on pin changes and weekly), the server image built from the CURRENT
+# nodestro-studio master instead of the pinned studio.json commit (catches a studio change that breaks the server
+# before the next pin bump), and the test-ID inventory. A red run opens or updates the issue "Nightly failed"; a green
+# run closes it. release.yml and publish.yml require a green nightly of the last 36 hours (job nightly-gate).
+# Publishes nothing: no registry push, no release, no tag; no secrets (the Nodestro and Orkexa repositories are public).
+name: Nightly
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      canary_fail:
+        description: Make the canary job fail, to prove that a red nightly opens the issue
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  upgrade:
+    uses: ./.github/workflows/upgrade.yml
+
+  studio-master:
+    # The image of the current studio master: studio.json is replaced in this runner's checkout only (never committed),
+    # so scripts/build-image.sh builds exactly as for a pin bump to that commit, then the acceptance tests run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve nodestro-studio master and use it for this run only
+        run: |
+          set -euo pipefail
+          sha=$(git ls-remote https://github.com/peterkarlhuber/nodestro-studio.git refs/heads/master | cut -f1)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::cannot resolve nodestro-studio master"; exit 1; }
+          pinned=$(python3 -I -c 'import json; print(json.load(open("studio.json"))["nodestro-studio"])')
+          python3 -I - "$sha" <<'PY'
+          import json, sys
+          pins = json.load(open("studio.json"))
+          pins["nodestro-studio"] = sys.argv[1]
+          open("studio.json", "w").write(json.dumps(pins, indent=2) + "\n")
+          PY
+          {
+            echo "### Server image from nodestro-studio master"
+            echo "- studio master: \`$sha\`"
+            echo "- pinned in studio.json: \`$pinned\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install pytest==8.4.2 httpx==0.28.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker
+      - name: Build the image
+        run: |
+          set -o pipefail
+          scripts/build-image.sh nodestro-server:studio-master 2>&1 | tee "$RUNNER_TEMP/build.log"
+      - name: Name a dependency conflict of studio master
+        # Studio master can pin a component whose own pins lag behind (pip ResolutionImpossible): say so plainly.
+        if: ${{ failure() }}
+        run: |
+          if grep -q ResolutionImpossible "$RUNNER_TEMP/build.log"; then
+            echo "::error::studio master cannot be installed: pip ResolutionImpossible (a component pin lags behind)"
+            { echo "**pip ResolutionImpossible:**"; echo '```'; grep -B 5 -A 25 -m 1 "ResolutionImpossible\|conflict" "$RUNNER_TEMP/build.log" | head -n 60; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Acceptance tests
+        env:
+          NODESTRO_IMAGE: nodestro-server:studio-master
+        run: scripts/e2e.sh -v
+
+  inventory:
+    # The test IDs pytest collects (CI-FAST AP0 baseline): their count and the sha256 of the sorted list.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install pytest==8.4.2 httpx==0.28.1
+      - name: Collect the test IDs
+        run: |
+          python -m pytest --collect-only -q -p no:cacheprovider > test-ids.txt || true
+          count=$(grep -c '::' test-ids.txt || true)
+          [ "$count" -ge 1 ] || { echo "::error::no test IDs collected"; cat test-ids.txt; exit 1; }
+          sum=$(grep '::' test-ids.txt | sort | sha256sum | cut -d' ' -f1)
+          {
+            echo "### Test-ID inventory"
+            echo "- test IDs: $count"
+            echo "- sha256 of the sorted list: \`$sum\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-ids
+          path: test-ids.txt
+          retention-days: 30
+
+  canary:
+    # Proves that a red nightly opens an issue (CI-FAST W0 acceptance).
+    if: inputs.canary_fail
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+
+  report:
+    needs: [ci, upgrade, studio-master, inventory, canary]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open, update or close the nightly issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Nightly failed"
+          failed=$(python3 -c 'import json,os; n=json.loads(os.environ["NEEDS"]); print(" ".join(k for k,v in n.items() if v["result"] not in ("success","skipped")))')
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number,title --jq "map(select(.title==\"$title\"))[0].number // empty")
+          if [ -n "$failed" ]; then
+            body="Nightly run $RUN_URL failed: $failed (commit $GITHUB_SHA)."
+            if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+            exit 1
+          elif [ -n "$number" ]; then
+            gh issue comment "$number" --body "Nightly run $RUN_URL is green again (commit $GITHUB_SHA). Closing."
+            gh issue close "$number"
+          fi
