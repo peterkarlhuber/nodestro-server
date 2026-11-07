@@ -488,10 +488,11 @@ fail with `run.budget_exceeded` as before. Every request and decision is in the 
 
 `GET /api/health` needs no session. It answers 200 `{"status": "ok", "database": "ok"}` while the API process
 reaches its database, and 503 `{"status": "unavailable", "database": "unreachable"}` when it does not (the check
-gives up after 2 seconds). The development stack's health check for the API treats the 503 as unhealthy; use the
-same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
-`nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the API uses it), so a
-worker neither polls it every few seconds nor turns unhealthy while it is down.
+gives up after 2 seconds): use it as the liveness check. `GET /api/ready` ("Metrics and status") is the readiness
+check: it also answers 503 while the process starts or stops. The development stack and the production example check
+the API with `/api/ready`; use it for your load balancer or orchestrator. Workers have no HTTP port: the stack
+checks them with `nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the
+API uses it), so a worker neither polls it every few seconds nor turns unhealthy while it is down.
 
 ## Metrics and status
 

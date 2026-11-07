@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import tarfile
@@ -170,6 +171,40 @@ def test_an_incomplete_or_unsafe_configuration_is_refused(
 def test_the_configured_server_is_ready(stack: None) -> None:
     result = operator("check")
     assert result.stdout.strip().endswith("ready"), result.stdout + result.stderr
+
+
+def _json_log(service: str) -> list[dict[str, Any]]:
+    """The log lines of a service (NODESTRO_LOG_FORMAT=json in the stack), each parsed; other lines fail."""
+    lines = compose("logs", "--no-color", "--no-log-prefix", service).stdout.splitlines()
+    # The server's own records only: the entrypoint and Python's startup write nothing else to the log.
+    records = [json.loads(line) for line in lines if line.strip()]
+    assert records, f"{service} wrote no log lines"
+    for record in records:
+        assert {"time", "level", "logger", "message", "request_id"} <= set(record), record
+    return records
+
+
+def test_readiness_request_ids_and_json_logs(stack: None) -> None:
+    # The readiness check of the load balancer and of the stack's health check (RUNBOOK, "Health checks").
+    ready = httpx.get(f"{ORIGIN}/api/ready", timeout=30)
+    assert ready.status_code == 200 and ready.json()["status"] == "ready", ready.text
+    assert ready.headers["cache-control"] == "no-store"
+    assert re.fullmatch(r"[0-9a-f]{16}", ready.headers["x-request-id"]), ready.headers
+    # A proxy's id is kept; one that is not a short token is replaced (it never reaches a log line).
+    mine = f"e2e-{secrets.token_hex(8)}"
+    answer = httpx.get(f"{ORIGIN}/api/auth/me", headers={"X-Request-ID": mine}, timeout=30)
+    assert answer.status_code == 401 and answer.headers["x-request-id"] == mine
+    forged = "line\tbreak " + "x" * 80
+    answer = httpx.get(f"{ORIGIN}/api/auth/me", headers={"X-Request-ID": forged}, timeout=30)
+    assert re.fullmatch(r"[0-9a-f]{16}", answer.headers["x-request-id"]), answer.headers
+    records = wait_for(
+        lambda: [record for record in _json_log("api") if record["request_id"] == mine],
+        timeout=30,
+        what=f"a log line of the API with request_id {mine}",
+    )
+    assert all(forged not in json.dumps(record) for record in _json_log("api"))
+    assert records[0]["level"] in ("INFO", "WARNING")
+    assert _json_log("worker")  # the worker's lines are JSON too (request_id "-": it serves no requests)
 
 
 def test_the_database_has_pgvector_for_semantic_knowledge_search(stack: None) -> None:
