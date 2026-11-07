@@ -7,7 +7,13 @@
 - RUNBOOK "Semantic knowledge search": what to do when pgvector was installed after migration `0010` (nodestro-runtime
   RT-048): one SQL query shows whether pgvector ranks the vectors, with the command for each state (`installable`,
   `other_schema`, `unavailable`); then restart the API and worker processes, no reindex. The install hint names the
-  schema for `NODESTRO_DATABASE_SCHEMA`.
+  schema for `NODESTRO_DATABASE_SCHEMA`. `nodestro-server check` now prints `warning: knowledge.pgvector_<state>` with
+  the command to run (nodestro-api #102, through the studio pin below).
+
+### Studio pin: TODO abatement round 5 (2026-11-07)
+
+- Pins nodestro-studio 27f8bd4 (studio #146 and #147: api 63af1df with the usage report by provider region, the
+  pgvector warning in `check` and MUP-ONA A1; sdk 4596be3; runtime de56875).
 
 ### Operations: TODO abatement round 4 (2026-11-07)
 
