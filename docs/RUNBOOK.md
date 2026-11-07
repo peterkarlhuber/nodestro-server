@@ -584,9 +584,21 @@ fail with `run.budget_exceeded` as before. Every request and decision is in the 
 reaches its database, and 503 `{"status": "unavailable", "database": "unreachable"}` when it does not (the check
 gives up after 2 seconds): use it as the liveness check. `GET /api/ready` ("Metrics and status") is the readiness
 check: it also answers 503 while the process starts or stops. The development stack and the production example check
-the API with `/api/ready`; use it for your load balancer or orchestrator. Workers have no HTTP port: the stack
-checks them with `nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the
-API uses it), so a worker neither polls it every few seconds nor turns unhealthy while it is down.
+the API with `/api/ready`; use it for your load balancer or orchestrator.
+
+Workers have no HTTP port. With `NODESTRO_WORKER_HEARTBEAT_FILE` set (the stack and the production example use
+`/tmp/nodestro-worker.json`, a path inside each worker's own container, never the shared data volume) a worker writes
+a small heartbeat file every 10 seconds: its state, whether it reached the database at the last beat and which of its
+loops run. The file holds no tenant data or secrets. `nodestro-server worker-health` reads it and exits `0` while the
+worker is alive (also while it drains after `SIGTERM`), `1` when the file is missing or older than `--max-age` seconds
+(default 60: the event loop is blocked or the process hangs), the worker could not reach its database or one of its
+loops ended, and `2` when the variable is unset. The stack uses it as the worker's health check.
+`nodestro-server check --skip-identity-provider` remains the configuration and database check for a worker (it
+leaves out the identity provider, which only the API uses); it does not see a hung worker.
+
+Server export jobs (`NODESTRO_SERVER_EXPORT_JOBS`, off by default until their review) are built by the workers: if
+you switch them on, set the switch and the export limits on the workers as well as on the API, and give the workers
+the same data volume.
 
 ## Metrics and status
 
