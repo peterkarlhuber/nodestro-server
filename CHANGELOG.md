@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Studio pin: MUP-ONA B6 cascade (2026-11-07)
+
+- Pins nodestro-studio c41e3c2 (studio #157, MUP-ONA B6 cascade: runtime 81b0f55, where the knowledge base, file
+  store and memory run on orkexa's PostgreSQL backends (orkexa 792a041); examples e063e89, integrations e1e0cd4, api
+  05e0232, sdk ee38fb0). `check`, the API and the workers now refuse a knowledge schema that differs from the
+  release's with `storage.schema_mismatch` (read-only; no DDL, no schema change). RUNBOOK, Upgrade: what to do then.
+
 ### Image: Debian security updates at build time (2026-11-07)
 
 - The image's base stage runs `apt-get upgrade` after `apt-get update`, so Debian security fixes reach the image
