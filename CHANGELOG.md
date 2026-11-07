@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Operations: TODO abatement round 6 (2026-11-07)
+
+- Browser test (SRV-010): `scripts/browser-e2e.sh` runs the development stack behind Caddy as the TLS proxy
+  (`tests/e2e/tls-proxy.yaml`, `https://localhost:8443`) and `tests/e2e/browser.mjs` in Chromium: a setup-link login
+  through Dex, the `__Host-nodestro-session` cookie flags, HSTS, the signed-in studio without console errors, sign out
+  and a second login, and the refusals (untrusted certificate, plain http, wrong password, no tenant, a sign-in code
+  in another browser). CI runs it in the `e2e` job; Dex's development config accepts the https redirect address
+  when `NODESTRO_TLS_ORIGIN` is set. Firefox and Safari remain untested (SRV-010, now P3).
+
 ### Operations: TODO abatement round 5 (2026-11-07)
 
 - RUNBOOK "Semantic knowledge search": what to do when pgvector was installed after migration `0010` (nodestro-runtime

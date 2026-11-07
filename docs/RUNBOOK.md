@@ -824,7 +824,7 @@ What the acceptance tests ran on. Anything else is untested, not unsupported by 
 | Database | PostgreSQL 17 with pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`; the image's `pg_dump`/`pg_restore` are version 17) | PostgreSQL 16 and 18 (see below); managed PostgreSQL services |
 | Identity provider | Dex v2.44.0 (OpenID Connect, authorization code with PKCE) | Keycloak, Entra ID, Okta, others (standard OIDC, expected to work) |
 | Sandbox daemon | Docker-in-Docker 29.9.2 with TLS, a separate daemon from the host's | a remote Docker host on another machine |
-| Browsers for the studio | none against the server image: the acceptance tests use HTTP clients | Chromium, Firefox, Safari against a server |
+| Browsers for the studio | Chromium (Playwright 1.63) against the server image behind Caddy over https: login through Dex, `__Host-` cookies, sign out, refusals (`scripts/browser-e2e.sh`) | Firefox, Safari against a server; the studio's full browser suites against a server with logins |
 
 Other PostgreSQL major versions, checked once by hand (2026-11-07, `NODESTRO_POSTGRES_IMAGE` replaces the development
 stack's database image, for example `pgvector/pgvector:0.8.7-pg16@sha256:0dd3149a…`):
@@ -916,6 +916,11 @@ With `NODESTRO_E2E_ALL_SWITCHES=1` it layers `compose/all-switches.yaml`, which 
 worker (keyring and metrics token from `scripts/dev-secrets.py`, input files in a directory of the data volume, the
 API and the worker still as `nodestro_app`), and also runs `tests/e2e/test_all_switches.py`. That file is for the
 development stack only; it approves no switch for production.
+
+`scripts/browser-e2e.sh` starts the same stack behind Caddy as the TLS proxy (`tests/e2e/tls-proxy.yaml`: the public
+origin and Dex's redirect address become `https://localhost:8443`, Caddy's certificate comes from its own local
+authority, no access log) and runs the Chromium test `tests/e2e/browser.mjs` (see the README). It uses the same
+compose project and ports as `scripts/e2e.sh`, so run one after the other.
 
 ## Security notes
 

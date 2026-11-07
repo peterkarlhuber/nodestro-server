@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-07 against `master` at `30e57bb` (TODO abatement round 5).
+> **Last full review:** 2026-11-07 against `master` at `30e57bb` (TODO abatement round 6).
 
 ## Summary
 
@@ -11,8 +11,8 @@
 |---|---|
 | P0 Critical | 0 |
 | P1 High | 0 |
-| P2 Medium | 7 |
-| P3 Low | 3 |
+| P2 Medium | 6 |
+| P3 Low | 4 |
 | P4 Optional | 1 |
 
 **Release blockers:** None for this repository; no entry here blocks the next planned preview (the desktop
@@ -117,10 +117,15 @@ None open; see SRV-010 and SRV-011 for platform coverage.
 
 ### SRV-010 · Browsers against the server image
 
-- **Priority:** P2 Medium · **Status:** Open · **Refs:** RUNBOOK "System requirements (tested)"
-- **What:** The acceptance tests use HTTP clients only. No browser (Chromium, Firefox, Safari) has been run against
-  a server with OIDC login, `__Host-` cookies and the TLS proxy.
-- **Next step:** Run the studio browser suites against the compose stack behind a TLS proxy (at least Chromium).
+- **Priority:** P3 Low · **Status:** Open · **Refs:** RUNBOOK "System requirements (tested)", `scripts/browser-e2e.sh`
+- **What:** Since 2026-11-07 Chromium runs against the server image behind Caddy over https (`scripts/browser-e2e.sh`,
+  `tests/e2e/browser.mjs`, CI job `e2e`): setup-link login through Dex, `__Host-` cookie flags, HSTS, the signed-in
+  studio without console errors, sign out, and the refusals. Not yet run against a server: Firefox and Safari
+  (WebKit), and the studio's own browser suites (editor, runs, settings), which run only against a backend without
+  logins.
+- **Next step:** Run `tests/e2e/browser.mjs` in Firefox and WebKit (they need another way than Chromium's
+  `--ignore-certificate-errors-spki-list` to trust only the proxy's certificate), then decide which studio suites
+  must also pass against a server with logins.
 
 ### SRV-011 · Untested infrastructure
 

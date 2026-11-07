@@ -18,6 +18,10 @@ staticClients:
     secretEnv: NODESTRO_OIDC_CLIENT_SECRET
     redirectURIs:
       - http://localhost:8080/api/auth/callback
+      # The studio behind the TLS proxy of the browser test (tests/e2e/tls-proxy.yaml sets NODESTRO_TLS_ORIGIN).
+{{- if getenv "NODESTRO_TLS_ORIGIN" }}
+      - {{ getenv "NODESTRO_TLS_ORIGIN" }}/api/auth/callback
+{{- end }}
 staticPasswords:
   - email: alice@example.com
     username: alice
