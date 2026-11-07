@@ -41,7 +41,7 @@ Statuses: `Open`, `In progress` (PR linked), `Blocked` (names the blocker), `Nee
 - **Priority:** P2 Medium · **Status:** Needs decision · **Refs:** RUNBOOK "Releases and rollback", project release notes 2026-10-31
 - **What:** The only server candidate (`v0.2.0-preview.1`, built 2026-10-31 from studio `78710ce`) predates the
   backend audit, Bedrock and Live Run Chat work and is outdated. Tags, GHCR pushes and releases are not approved.
-- **Next step:** From the current pins (`studio.json`; studio `5318cea` since 2026-11-07), run `release.yml` again (it now
+- **Next step:** From the current pins (`studio.json`; studio `c41e3c2` since 2026-11-07), run `release.yml` again (it now
   also writes the vulnerability reports), record a Go/No-Go, and ask the owner whether to publish. Do not run `publish.yml` without that approval.
 
 ## Security
