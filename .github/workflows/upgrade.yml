@@ -33,7 +33,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: upgrade-${{ github.ref }}
+  # github.workflow differs when the nightly calls this workflow, so a nightly and a master push never cancel each other.
+  group: upgrade-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
