@@ -14,6 +14,24 @@
     ]
   },
   "comment_path_filtered": "Checks that run on a pull request only when it changes the files in the workflow's paths filter; required only when they ran on the PR head SHA.",
+  "path_filters": {
+    "upgrade.yml": {
+      "paths": [
+        "studio.json",
+        "tests/upgrade-from.json",
+        "tests/e2e/test_upgrade.py",
+        "tests/e2e/conftest.py",
+        "compose/**",
+        "image/**",
+        "scripts/build-image.sh",
+        "scripts/dev-secrets.py",
+        "scripts/restore.sh",
+        "scripts/restore_dump.py",
+        ".github/workflows/upgrade.yml"
+      ]
+    }
+  },
+  "comment_path_filters": "Copied verbatim from each path-filtered workflow's on.pull_request paths/paths-ignore; ci-ok uses them to decide whether the workflow had to run, and 'ci_ok.py --self-check' reports it when they differ from the workflow file.",
   "nightly": {
     "nightly.yml": [
       "report"
