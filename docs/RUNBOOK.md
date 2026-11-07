@@ -780,6 +780,13 @@ backups both ways.
    API and workers. A database written by a newer release is refused (`storage.schema_too_new`); downgrade by
    restoring the backup.
 
+After the migration check, `nodestro-server check`, the API and the workers also compare the knowledge and memory
+tables (`nodestro_documents`, `nodestro_chunks`, the file store and the memory tables) with the layout the release
+expects, read-only. A difference the migration checksums cannot see, such as an index dropped or a column type
+changed by hand, stops the start with `storage.schema_mismatch` and lists every difference; nothing is changed. Restore
+the object as PostgreSQL migrations 0001 to 0010 create it (or restore the backup) and start again; do not edit the
+migrations. A new database that still lacks migrations reports only the missing migration.
+
 The CI job `upgrade` (`.github/workflows/upgrade.yml`) runs these steps and the rollback below against the
 development stack, from the previous release in `tests/upgrade-from.json` to the current image.
 
