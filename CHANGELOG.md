@@ -9,6 +9,14 @@
 - `NODESTRO_POSTGRES_IMAGE` replaces the development stack's database image for tests on other PostgreSQL major
   versions; the RUNBOOK records what PostgreSQL 16 and 18 did.
 
+### Studio pin: TODO abatement round 3 (2026-11-06)
+
+- Pins nodestro-studio ee3f378 (studio #142: Settings → Members, export delete, runtime b06b371 with the semantic
+  reindex as a server job, api 7142761 with member routes, idle tenant contexts, export quota and chat file
+  retention in the worker).
+- RUNBOOK: members in the studio, `NODESTRO_TENANT_IDLE_MINUTES`, `NODESTRO_SERVER_EXPORT_TENANT_QUOTA_BYTES` and
+  reindex jobs.
+
 ### Studio pin: TODO abatement round 2 (2026-11-06)
 
 - Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant
