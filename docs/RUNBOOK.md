@@ -315,8 +315,10 @@ the table `nodestro_chunk_vectors` (migration `0010`, tenant-scoped like every o
 
   Then restart the API and worker processes: each knowledge index checks pgvector once, so running processes keep
   ranking the vectors themselves until then. No reindex is needed: the vectors are stored as `real[]` either way.
-  nodestro-runtime's `pgvector_status()` returns the same state with the command to run; `nodestro-server check`
-  does not report it yet (nodestro-api).
+  `nodestro-server check` prints `warning: knowledge.pgvector_<state>` with the exact command when pgvector does not
+  rank the knowledge vectors (nothing for `active`; the server is still reported `ready`), so run it again after the
+  restart. `knowledge.pgvector_unknown` means the state could not be read: check the runtime role's database access.
+  Semantic search works in every state, ranked by the runtime when pgvector does not rank it.
 - **Reindex jobs:** building or rebuilding a semantic index is a `reindex` job of the job queue that a worker runs
   with a lease, like runs. A restarted API process or worker loses nothing: another worker continues where the job
   stopped, and every API process shows its progress.
