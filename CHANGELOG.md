@@ -4,6 +4,9 @@
 
 ### Studio pin: MUP-ONA B2 cascade (2026-11-07)
 
+- Pins nodestro-studio 5318cea (studio #153, MUP-ONA B4 cascade: runtime df4aeb3 with the tenant SQL rule engine,
+  the generic PostgreSQL part with a statement catalog and partition guard, and `partition.missing`; examples c9ef422,
+  integrations fe2fa12, api e5b5281, sdk d372eee). Behavior unchanged.
 - Pins nodestro-studio 9c0a6bd (studio #149): runtime d9c3d6e (orkexa 028faa1 with the MUP-ONA B2 SQLite backends,
   Axentra 60d83b3 with the A8 security test vectors, a reindex switch that embeds what its last round left), api
   44212bc (`agent.VectorError` answers 422), sdk bda96c1.
