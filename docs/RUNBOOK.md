@@ -582,10 +582,11 @@ fail with `run.budget_exceeded` as before. Every request and decision is in the 
 
 `GET /api/health` needs no session. It answers 200 `{"status": "ok", "database": "ok"}` while the API process
 reaches its database, and 503 `{"status": "unavailable", "database": "unreachable"}` when it does not (the check
-gives up after 2 seconds). The development stack's health check for the API treats the 503 as unhealthy; use the
-same route for your load balancer or orchestrator. Workers have no HTTP port: the stack checks them with
-`nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the API uses it), so a
-worker neither polls it every few seconds nor turns unhealthy while it is down.
+gives up after 2 seconds): use it as the liveness check. `GET /api/ready` ("Metrics and status") is the readiness
+check: it also answers 503 while the process starts or stops. The development stack and the production example check
+the API with `/api/ready`; use it for your load balancer or orchestrator. Workers have no HTTP port: the stack
+checks them with `nodestro-server check --skip-identity-provider`, which leaves out the identity provider (only the
+API uses it), so a worker neither polls it every few seconds nor turns unhealthy while it is down.
 
 ## Metrics and status
 
@@ -779,10 +780,20 @@ What the acceptance tests ran on. Anything else is untested, not unsupported by 
 | Part | Tested | Not tested |
 | --- | --- | --- |
 | Container host | linux/amd64, Docker Engine with Compose v2 (GitHub `ubuntu-latest` runner, Ubuntu 24.04) | arm64, Podman, Kubernetes, Docker Desktop on macOS or Windows |
-| Database | PostgreSQL 17 with pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`; the image's `pg_dump`/`pg_restore` are version 17) | other major versions; managed PostgreSQL services |
+| Database | PostgreSQL 17 with pgvector 0.8.7 (`pgvector/pgvector:0.8.7-pg17`; the image's `pg_dump`/`pg_restore` are version 17) | PostgreSQL 16 and 18 (see below); managed PostgreSQL services |
 | Identity provider | Dex v2.44.0 (OpenID Connect, authorization code with PKCE) | Keycloak, Entra ID, Okta, others (standard OIDC, expected to work) |
 | Sandbox daemon | Docker-in-Docker 29.9.2 with TLS, a separate daemon from the host's | a remote Docker host on another machine |
 | Browsers for the studio | none against the server image: the acceptance tests use HTTP clients | Chromium, Firefox, Safari against a server |
+
+Other PostgreSQL major versions, checked once by hand (2026-11-07, `NODESTRO_POSTGRES_IMAGE` replaces the development
+stack's database image, for example `pgvector/pgvector:0.8.7-pg16@sha256:0dd3149a…`):
+
+- **PostgreSQL 16:** migrations, logins, tenants, runs, the worker and semantic search work, but restoring a backup
+  fails: the image's `pg_dump` 17 writes `SET transaction_timeout`, which PostgreSQL 16 does not know. Do not use 16.
+- **PostgreSQL 18:** the official images keep their data in `/var/lib/postgresql/18/docker` and refuse to start with
+  a volume on `/var/lib/postgresql/data` (the development stack's mount), so the stack did not start; with 18 the
+  volume belongs on `/var/lib/postgresql`. Backups would also need a `pg_dump` 18 (`pg_dump` refuses newer
+  servers). Not tested further.
 
 ## Releases and rollback
 

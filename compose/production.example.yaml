@@ -41,6 +41,7 @@ x-nodestro: &nodestro
     NODESTRO_SECRET_KEY_FILE: /run/secrets/secret_key
     NODESTRO_MODEL_ENDPOINTS: ${NODESTRO_MODEL_ENDPOINTS:-}
     NODESTRO_DATABASE_POOL_SIZE: "8"
+    NODESTRO_LOG_FORMAT: json # one JSON object per line with request_id, for the log collector
     DOCKER_HOST: ${NODESTRO_SANDBOX_HOST:?NODESTRO_SANDBOX_HOST is the sandbox Docker host, tcp://...:2376}
     DOCKER_TLS_VERIFY: "1"
     DOCKER_CERT_PATH: /run/sandbox-certs
@@ -76,7 +77,7 @@ services:
     cpus: 2
     pids_limit: 512
     healthcheck:
-      test: ["CMD", "python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"]
+      test: ["CMD", "python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ready', timeout=4)"]
       interval: 10s
       timeout: 5s
       start_period: 60s

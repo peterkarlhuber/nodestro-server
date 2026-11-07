@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Operations: TODO abatement round 4 (2026-11-07)
+
+- The development stack and `compose/production.example.yaml` check the API with `GET /api/ready` (readiness) and
+  set `NODESTRO_LOG_FORMAT=json`; a new acceptance test checks readiness, request ids and the JSON log lines.
+- `NODESTRO_POSTGRES_IMAGE` replaces the development stack's database image for tests on other PostgreSQL major
+  versions; the RUNBOOK records what PostgreSQL 16 and 18 did.
+
 ### Studio pin: TODO abatement round 3 (2026-11-06)
 
 - Pins nodestro-studio ee3f378 (studio #142: Settings → Members, export delete, runtime b06b371 with the semantic

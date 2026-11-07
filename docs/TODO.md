@@ -3,7 +3,7 @@
 > Open work for this repository: release blockers, known bugs, security follow-ups, technical debt and planned improvements.
 > GitHub issues are the source of truth for details; this file is the entry point and summary.
 >
-> **Last full review:** 2026-11-06 against `master` at `453fb26` (TODO abatement round).
+> **Last full review:** 2026-11-07 against `master` at `9d918aa` (TODO abatement round 4).
 
 ## Summary
 
@@ -100,11 +100,12 @@ The image definition here is shared with nodestro-local-docker by design; see it
 ### SRV-007 · Monitoring section in the runbook
 
 - **Priority:** P2 Medium · **Status:** Blocked (on nodestro-api observability, backend audit D-10) · **Refs:** backend audit D-10
-- **What:** The runbook covers health checks and the metrics endpoint ("Metrics and status": what to scrape and
-  alert on). There is no JSON log, request ID or readiness endpoint to document yet, and workers have no liveness
-  signal besides `nodestro-server check`.
-- **Next step:** When the API adds them, document the log fields and readiness there and wire the dev stack's health
-  checks to them.
+- **What:** The runbook covers health checks, readiness (`/api/ready`), request ids, JSON logs and the metrics
+  endpoint ("Health checks", "Metrics and status"). Since 2026-11-07 the development stack and the production
+  example check the API with `/api/ready` and log JSON, and `test_readiness_request_ids_and_json_logs` checks all
+  three. Left: workers have no liveness signal besides `nodestro-server check`, and there is no tracing.
+- **Next step:** When the API adds a worker liveness signal (and optional tracing), document it and use it in the
+  worker's health check.
 - **Depends on:** nodestro-api API-011 (observability, D-10)
 
 ## Tests and quality assurance
@@ -126,8 +127,11 @@ None open; see SRV-010 and SRV-011 for platform coverage.
 - **What:** Untested: identity providers other than Dex (Keycloak, Entra ID, Okta), a remote sandbox Docker host
   over mutual TLS, Podman, Kubernetes, Docker Desktop, PostgreSQL major versions other than 17, and Amazon Bedrock
   tenant roles against real AWS STS (live calls not yet approved).
+  PostgreSQL 16 and 18 were tried once on 2026-11-07 (`NODESTRO_POSTGRES_IMAGE`, RUNBOOK): 16 runs everything but
+  a restore (the image's `pg_dump` 17 writes a setting 16 rejects), 18 does not start with the stack's data mount.
 - **Next step:** Test at least one production identity provider and a remote sandbox host before a pilot; record
-  results in the runbook table.
+  results in the runbook table. Decide whether 16 or 18 must be supported (restore with a matching `pg_dump`, the
+  18 data mount).
 
 ### SRV-013 · PostgreSQL load test on target hardware
 

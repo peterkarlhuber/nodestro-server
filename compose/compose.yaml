@@ -36,6 +36,8 @@ x-server: &server
     # NODESTRO_AXENTRA_AUDIT: "1"
     # NODESTRO_AXENTRA_USAGE: "1"
     # NODESTRO_IDENTITY_BACKEND: mirror  # after `nodestro-server axentra backfill-identity`
+    # One JSON object per log line with the request id (docs/RUNBOOK.md, "Metrics and status"), as in production.
+    NODESTRO_LOG_FORMAT: json
     NODESTRO_WORKER_LEASE_SECONDS: ${NODESTRO_WORKER_LEASE_SECONDS:-60}
     NODESTRO_WORKER_REAP_SECONDS: ${NODESTRO_WORKER_REAP_SECONDS:-15}
     DOCKER_HOST: tcp://localhost:2376
@@ -54,7 +56,8 @@ services:
   # the database rank the vectors of semantic knowledge search; db-roles installs it (docs/RUNBOOK.md, "Semantic
   # knowledge search"). Pinned by digest of the multi-platform index.
   postgres:
-    image: &postgres-image pgvector/pgvector:0.8.7-pg17@sha256:7d0a41464797aeb9862dfdc0bbf1526b82cfd324cdd8036df19e3545f4a9ccb8
+    # NODESTRO_POSTGRES_IMAGE: another major version for the tests (docs/RUNBOOK.md, "System requirements (tested)").
+    image: &postgres-image ${NODESTRO_POSTGRES_IMAGE:-pgvector/pgvector:0.8.7-pg17@sha256:7d0a41464797aeb9862dfdc0bbf1526b82cfd324cdd8036df19e3545f4a9ccb8}
     restart: unless-stopped
     environment:
       POSTGRES_USER: nodestro
@@ -159,7 +162,8 @@ services:
       sandbox: {condition: service_healthy}
       dex: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"]
+      # Readiness: 503 while the process starts, stops or cannot reach the database (docs/RUNBOOK.md, "Health checks").
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ready')"]
       interval: 2s
       timeout: 5s
       retries: 60
