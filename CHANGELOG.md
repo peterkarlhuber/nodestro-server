@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Studio pin: TODO abatement round 3 (2026-11-06)
+
+- Pins nodestro-studio ee3f378 (studio #142: Settings → Members, export delete, runtime b06b371 with the semantic
+  reindex as a server job, api 7142761 with member routes, idle tenant contexts, export quota and chat file
+  retention in the worker).
+- RUNBOOK: members in the studio, `NODESTRO_TENANT_IDLE_MINUTES`, `NODESTRO_SERVER_EXPORT_TENANT_QUOTA_BYTES` and
+  reindex jobs.
+
 ### Operations: MUP-ONA security documentation
 
 - RUNBOOK "Client addresses behind a reverse proxy" (MUP-ONA A3, PS-3): `NODESTRO_BEHIND_PROXY`,
@@ -15,6 +23,7 @@
   own refuses an owner role in production unless `database.allow_table_owner = true`.
 - RUNBOOK: how to keep `NODESTRO_MODEL_ENDPOINTS` narrow (MUP-ONA A7, PS-7, accepted risk): exact origins only,
   never internal services or metadata addresses, model servers on their own network segment.
+
 ### Studio pin: TODO abatement round 2 (2026-11-06)
 
 - Pins nodestro-studio 5c0fbd8 (studio #140): api 56fa762 (idempotency reservation, usage period read, assistant
