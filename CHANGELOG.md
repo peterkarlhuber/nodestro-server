@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Studio pin: pin wave W7, TABRION JQ-4 (2026-11-08)
+
+- Pins nodestro-studio 9d24565 (studio #162, pin wave W7: runtime f5da80d, runtime #143, where writes are never
+  repeated after a lost connection (TABRION JQ-1..JQ-3, RT2-03); axentra 9c4666f, axentra #61, with database error
+  values redacted from logs, traces and stored errors (B-06-1); examples 4d46e22, integrations 2b19279, api 221f9e1,
+  sdk f97de2f). No schema change; behavior unchanged otherwise.
+
 ### Studio pin: MUP-ONA B6 cascade (2026-11-07)
 
 - Pins nodestro-studio c41e3c2 (studio #157, MUP-ONA B6 cascade: runtime 81b0f55, where the knowledge base, file
