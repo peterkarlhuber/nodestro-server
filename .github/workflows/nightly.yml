@@ -8,7 +8,9 @@ name: Nightly
 
 on:
   schedule:
-    - cron: "15 3 * * *"
+    # GitHub starts scheduled runs about 6 h late on this account (measured 2026-11-08..11): the cron sits 6 h
+    # before the night.
+    - cron: "15 21 * * *"
   workflow_dispatch:
     inputs:
       canary_fail:
