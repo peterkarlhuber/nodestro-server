@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Studio pin: max_tokens and tool-round regression, RT-067 (2026-11-11)
+
+- Pins nodestro-studio 6755c7a (studio #167: orkexa 840add4, orkexa #71, which replays only the latest reasoning to
+  Ollama so tool conversations no longer outgrow the context window, and answers instead of failing when a tool-round
+  or reasoning limit is reached; runtime 979c11c, runtime #148/#150, with `limits_handled` on a step and failure
+  causes; examples 6ef36f3, integrations 7390f83, api e584d6f, sdk 5aa0d9a; also studio #164, colima image cache in CI).
+  No schema change; limits are unchanged.
+
 ### Studio pin: pin wave W7, TABRION JQ-4 (2026-11-08)
 
 - Pins nodestro-studio 9d24565 (studio #162, pin wave W7: runtime f5da80d, runtime #143, where writes are never
