@@ -9,7 +9,8 @@
 #
 #   docker buildx build -f image/Dockerfile --build-arg STUDIO_COMMIT=<sha> [--target local] -t nodestro-server .
 #
-# STUDIO_COMMIT is a merge commit of nodestro-studio (studio.json); it pins every component by full commit SHA.
+# STUDIO_COMMIT is a merge commit of nodestro-studio (studio.json); it pins every component by full commit SHA, and
+# its platform/uploaded-prior-to bounds the third-party packages (pip --uploaded-prior-to, image/cutoff.sh).
 # The component repositories are public, so no token is needed; a token in the optional `nodestro_read` secret
 # (never a layer) is still used when given. Behind a TLS-inspecting proxy, pass its certificate authority as the `build_ca`
 # secret (and the proxy variables as build arguments). Nothing is fetched when a container starts.
@@ -58,7 +59,7 @@ RUN --mount=type=secret,id=build_ca \
 FROM python-base AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=studio /src /src
-COPY image/install.py /install.py
+COPY image/install.py image/cutoff.sh /
 RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     set -eu; \
     if [ -s /run/secrets/build_ca ]; then export PIP_CERT=/run/secrets/build_ca GIT_SSL_CAINFO=/run/secrets/build_ca; fi; \
@@ -67,8 +68,11 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
         GIT_CONFIG_VALUE_0="https://github.com/peterkarlhuber/"; \
     fi; \
     python -m venv /opt/nodestro/venv; \
-    /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check /src; \
+    cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
+    /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
+      ${cutoff:+--uploaded-prior-to "$cutoff"} /src; \
     mkdir -p /opt/nodestro/meta; \
+    if [ -n "$cutoff" ]; then echo "$cutoff" > /opt/nodestro/meta/uploaded-prior-to; fi; \
     cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
     cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/; \
     mkdir -p /opt/nodestro/licenses; \
@@ -94,14 +98,15 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
       export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nodestro_read)@github.com/peterkarlhuber/.insteadOf" \
         GIT_CONFIG_VALUE_0="https://github.com/peterkarlhuber/"; \
     fi; \
-    /opt/nodestro/venv/bin/python /install.py
+    cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
+    /opt/nodestro/venv/bin/python /install.py ${cutoff:+--uploaded-prior-to "$cutoff"}
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
+    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" server
 
 # Nodestro Local Docker's environment: the studio as pinned, no server extras.
 FROM build AS local-env
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
+    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" studio
 
 # ---- what both images share: tini and the docker CLI -----------------------------------------------
 FROM python-base AS base
