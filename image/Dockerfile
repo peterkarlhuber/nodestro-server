@@ -96,12 +96,12 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     /opt/nodestro/venv/bin/python /install.py
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
+    sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" server
 
 # Nodestro Local Docker's environment: the studio as pinned, no server extras.
 FROM build AS local-env
 RUN --mount=type=bind,from=overrides,target=/overrides \
-    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]"
+    sh /finalize.sh "import nodestro_api.local_container, nodestro_studio.app, nodestro_runtime.sandbox_gateway, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" studio
 
 # ---- what both images share: tini and the docker CLI -----------------------------------------------
 FROM python-base AS base
