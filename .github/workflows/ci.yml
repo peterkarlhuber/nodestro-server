@@ -104,9 +104,10 @@ jobs:
         run: |
           scripts/build-image.sh nodestro-server:ci
       - name: The image's lock check covers tabrion
-        # TABRION DC-SV-1 (dependency confusion): image/finalize.sh failed the build unless every installed component
-        # came from its pinned commit (lock_check.py, server profile); a tabrion from a package index is red there.
-        # Its output in the image must also name tabrion as checked, so a tabrion that silently left
+        # TABRION DC-SV-1 (dependency confusion): image/finalize.sh failed the build unless every installed component's
+        # direct_url.json names its pinned commit (lock_check.py, server profile), which detects an accidental index
+        # install of tabrion (no proof of origin: a wheel can forge the file; the -r lock pin is the protection). Its
+        # output in the image must also name tabrion as checked, so a tabrion that silently left
         # platform/versions.json (and thereby the check) is noticed.
         run: |
           set -euo pipefail

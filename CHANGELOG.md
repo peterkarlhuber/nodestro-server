@@ -8,7 +8,9 @@
   the verdict and the build failure on a red check are unchanged.
 - CI (`e2e`, after the server image build): the lock check must name `tabrion` as checked (`ok   tabrion <version> @
   <commit>`) and be green for the server profile, so a tabrion that silently left the studio's `versions.json`, and
-  thereby the check against an index install (dependency confusion), is noticed.
+  thereby the check, is noticed. The check reads `direct_url.json`: it detects an accidental index install
+  (dependency confusion), it is no proof of origin (a wheel can forge the file); the protection is the image's
+  `-r` lock install, whose direct-URL pin never asks an index for tabrion.
 
 ### Studio pin: the studio lock is mandatory, CI-FAST (2026-11-13)
 
