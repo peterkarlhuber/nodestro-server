@@ -26,6 +26,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,7 @@ if not FROM_DIR:
 
 from test_acceptance import _finished, _flow, _start, _use_the_stub, _workflow  # noqa: E402
 
-from conftest import ROOT, SECRETS, Browser, accounts, compose, login, operator, wait_healthy  # noqa: E402
+from conftest import ROOT, SECRETS, Browser, accounts, compose, login, operator, psql, wait_healthy  # noqa: E402
 
 OLD = Path(FROM_DIR).resolve()
 # The previous release's own test helpers drive its API (its login flow differs: no login cookie before the backend
@@ -52,6 +53,16 @@ _spec.loader.exec_module(previous)
 OLD_IMAGE = os.environ.get("NODESTRO_UPGRADE_FROM_IMAGE", "nodestro-server:upgrade-from")
 NEW_IMAGE = os.environ.get("NODESTRO_IMAGE", "nodestro-server:dev")
 EXTRA_CA = os.environ.get("NODESTRO_EXTRA_CA_FILE", "")
+#: Both releases run the current compose file's PostgreSQL image (pinned by digest; NODESTRO_POSTGRES_IMAGE replaces
+#: it for both): the previous release's compose file names the floating tag postgres:17, and a newer minor version or
+#: C library there than here turns the switch to the current release into a downgrade on the same data volume
+#: (tests/e2e/upgrade-from-postgres.yaml). This test checks Nodestro's upgrade, not a PostgreSQL minor downgrade.
+_PINNED_POSTGRES = re.search(
+    r"image: &postgres-image \$\{NODESTRO_POSTGRES_IMAGE:-([^}\s]+)\}",
+    (ROOT / "compose" / "compose.yaml").read_text(encoding="utf-8"),
+)
+assert _PINNED_POSTGRES, "compose/compose.yaml: the postgres service's image (&postgres-image) was not found"
+os.environ["NODESTRO_POSTGRES_IMAGE"] = os.environ.get("NODESTRO_POSTGRES_IMAGE") or _PINNED_POSTGRES.group(1)
 #: Seconds for db-roles, ``migrate --backup-dir`` and the API and worker to come up after a switch. The migrations
 #: of a small database take seconds; the OPS2-01 deadlock hung until PostgreSQL's idle-in-transaction timeout.
 UPGRADE_SECONDS = int(os.environ.get("NODESTRO_UPGRADE_SECONDS", "240"))
@@ -64,8 +75,10 @@ RESTORE = (ROOT / "scripts" / "restore_dump.py").read_text(encoding="utf-8")
 
 def _use(checkout: Path, image: str) -> None:
     """Point the following ``docker compose`` calls at a release: its compose file (same project name, so the same
-    volumes) and its image."""
+    volumes) and its image. The previous release gets the current PostgreSQL image (``_PINNED_POSTGRES``)."""
     files = [checkout / "compose" / "compose.yaml"]
+    if checkout != ROOT:
+        files.append(ROOT / "tests" / "e2e" / "upgrade-from-postgres.yaml")
     if EXTRA_CA:
         files.append(checkout / "compose" / "extra-ca.yaml")
     os.environ["COMPOSE_FILE"] = ":".join(str(file) for file in files)
@@ -171,6 +184,7 @@ def test_upgrade_rollback_and_reupgrade_keep_the_data(stack: None, tmp_path: Pat
     # The previous release with data: a tenant, its first owner, a provider key (encrypted with the secret key), a
     # workflow and a finished run.
     compose("up", "-d", "--wait", "--wait-timeout", "900", timeout=1800)
+    server_version = psql("SELECT version()").strip()
     operator("create-tenant", TENANT, "Acme Upgrade")
     link = operator("setup-link", TENANT).stdout.strip().splitlines()[-1]
     alice = previous.login(previous.accounts()["alice"], setup=link.split("setup=", 1)[1])
@@ -192,6 +206,7 @@ def test_upgrade_rollback_and_reupgrade_keep_the_data(stack: None, tmp_path: Pat
     compose("stop", "api", "worker")
     _switch_to_new_release()
     assert len(_pre_migration_dumps()) == 1, "migrate --backup-dir wrote no backup before migrating"
+    assert psql("SELECT version()").strip() == server_version, "the switch changed the PostgreSQL server"
     alice = _alice()
     assert _names(alice) == before
     _runs(alice, old_workflow)  # the stored provider key still decrypts; the new worker runs old workflows
