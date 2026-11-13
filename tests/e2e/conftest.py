@@ -85,6 +85,25 @@ def wait_healthy(service: str, timeout: float = 180) -> None:
     wait_for(healthy, timeout=timeout, every=1, what=f"{service} to be healthy")
 
 
+def listed_state(service: str) -> str:
+    """The state of the service's container as ``docker compose`` lists it (``running``, ``exited``, ...)."""
+    return compose("ps", "--all", "--format", "{{.State}}", service, check=False).stdout.strip()
+
+
+def kill_and_start(service: str, timeout: float = 60) -> None:
+    """SIGKILL the service's container and start it again, as after a crash.
+
+    ``docker compose kill`` returns as soon as the daemon saw the process exit, but the daemon updates the container
+    list (what ``docker compose up`` reads) only after it wrote the new state to disk. An ``up`` in between finds the
+    container still "running", starts nothing and succeeds, and the restart policy does not apply after a kill: the
+    service then stays down. So wait until the container is listed as exited before starting it, and until it is
+    listed as running afterwards."""
+    compose("kill", "-s", "SIGKILL", service)
+    wait_for(lambda: listed_state(service) == "exited", timeout=timeout, every=0.2, what=f"{service} to be exited")
+    compose("up", "-d", "--no-deps", service)
+    wait_for(lambda: listed_state(service) == "running", timeout=timeout, every=0.2, what=f"{service} to run again")
+
+
 @dataclass
 class Account:
     name: str

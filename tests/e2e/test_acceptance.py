@@ -21,6 +21,7 @@ Every test drives the running stack from the outside (see conftest.py):
 
 from __future__ import annotations
 
+from contextlib import suppress
 import json
 from pathlib import Path
 import re
@@ -43,6 +44,7 @@ from conftest import (
     Tenants,
     accounts,
     compose,
+    kill_and_start,
     login,
     new_tenant,
     operator,
@@ -503,6 +505,18 @@ def test_tool_code_sees_no_aws_variables(tenants: Tenants) -> None:
 # ---- workers ------------------------------------------------------------------------------------
 
 
+def _worker_starts() -> list[str]:
+    """The "Worker <name> started" records of the worker service's log, oldest first (its other lines are skipped:
+    Python's warnings are not JSON)."""
+    lines = compose("logs", "--no-color", "--no-log-prefix", "worker").stdout.splitlines()
+    records = []
+    for line in lines:
+        with suppress(ValueError):
+            records.append(json.loads(line))
+    messages = [str(record.get("message", "")) for record in records if isinstance(record, dict)]
+    return [message for message in messages if re.fullmatch(r"Worker \S+ started", message)]
+
+
 def test_a_worker_killed_in_the_middle_of_a_run(tenants: Tenants) -> None:
     alice = tenants.alice
     _use_the_stub(alice)
@@ -510,8 +524,10 @@ def test_a_worker_killed_in_the_middle_of_a_run(tenants: Tenants) -> None:
     run_id = _start(alice, _workflow(alice, _flow("Long run", prompt)))
     wait_for(lambda: _stub_count(prompt) == 1, timeout=180, what="the model call of the long run")
     assert _run(alice, run_id)["status"] == "running"
-    compose("kill", "-s", "SIGKILL", "worker")
-    compose("up", "-d", "--no-deps", "worker")
+    before = _worker_starts()
+    kill_and_start("worker")
+    # A new worker process got through its start (a container listed as running is not yet a worker).
+    wait_for(lambda: len(_worker_starts()) > len(before), timeout=120, every=1, what="the new worker to start")
     run = _finished(alice, run_id, timeout=300)  # the new worker reaps the expired lease
     assert run["status"] == "failed" and _error_code(run) == "run.interrupted", run
     time.sleep(5)
