@@ -9,8 +9,11 @@
 #
 #   docker buildx build -f image/Dockerfile --build-arg STUDIO_COMMIT=<sha> [--target local] -t nodestro-server .
 #
-# STUDIO_COMMIT is a merge commit of nodestro-studio (studio.json); it pins every component by full commit SHA, and
-# its platform/uploaded-prior-to bounds the third-party packages (pip --uploaded-prior-to, image/cutoff.sh).
+# STUDIO_COMMIT is a merge commit of nodestro-studio (studio.json). Its lock pins every internal package by full commit
+# SHA (platform/internal.txt for the studio profile, platform/internal-server.txt for the server profile), its
+# platform/uploaded-prior-to bounds the third-party packages (pip --uploaded-prior-to, image/cutoff.sh) and its
+# scripts/lock_check.py checks each environment against platform/versions.json (image/finalize.sh). A studio commit
+# without any of these files fails the build.
 # The component repositories are public, so no token is needed; a token in the optional `nodestro_read` secret
 # (never a layer) is still used when given. Behind a TLS-inspecting proxy, pass its certificate authority as the `build_ca`
 # secret (and the proxy variables as build arguments). Nothing is fetched when a container starts.
@@ -69,11 +72,13 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     python -m venv /opt/nodestro/venv; \
     cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
-    lock=""; if [ -f /src/platform/internal.txt ]; then lock="/src/platform/internal.txt"; fi; \
+    test -n "$cutoff" || { echo "the studio's upload cutoff is empty (image/cutoff.sh)" >&2; exit 1; }; \
+    test -f /src/platform/internal.txt || { echo "the studio $(cat /src/.studio-commit) has no lock" \
+      "(platform/internal.txt); pin a studio commit with the lock in studio.json" >&2; exit 1; }; \
     /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
-      ${cutoff:+--uploaded-prior-to "$cutoff"} ${lock:+-r "$lock"} /src; \
+      --uploaded-prior-to "$cutoff" -r /src/platform/internal.txt /src; \
     mkdir -p /opt/nodestro/meta; \
-    if [ -n "$cutoff" ]; then echo "$cutoff" > /opt/nodestro/meta/uploaded-prior-to; fi; \
+    echo "$cutoff" > /opt/nodestro/meta/uploaded-prior-to; \
     cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
     cp /src/platform/versions.json /src/frontend/package-lock.json /opt/nodestro/meta/; \
     mkdir -p /opt/nodestro/licenses; \
@@ -88,8 +93,8 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
       > /opt/nodestro/licenses/README.txt
 COPY image/finalize.sh /finalize.sh
 
-# The server's environment: the server extras at exactly the pinned commits (the studio's lock, platform/internal*.txt,
-# when the pinned studio has one; older studio commits pin the components in its pyproject.toml).
+# The server's environment: the server extras at exactly the locked commits (the studio's lock, server profile:
+# platform/internal-server.txt; image/install.py fails the build without it).
 # Both environments must contain the Amazon Bedrock provider: boto3/botocore come with orkexa[all], and the
 # import check loads botocore's service models (bedrock-runtime, bedrock, sts) to prove its data files are there.
 FROM build AS server-env
@@ -101,7 +106,7 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
         GIT_CONFIG_VALUE_0="https://github.com/peterkarlhuber/"; \
     fi; \
     cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
-    /opt/nodestro/venv/bin/python /install.py --platform /src/platform ${cutoff:+--uploaded-prior-to "$cutoff"}
+    /opt/nodestro/venv/bin/python /install.py --platform /src/platform --uploaded-prior-to "$cutoff"
 RUN --mount=type=bind,from=overrides,target=/overrides \
     sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" server
 

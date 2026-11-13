@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Studio pin: the studio lock is mandatory, CI-FAST (2026-11-13)
+
+- Pins nodestro-studio 479ae56 (studio #170..#179: one lock of the internal packages, `platform/internal.txt` and
+  `platform/internal-server.txt`, generated from `platform/versions.json`, with version ranges in the libraries; the
+  shared upload cutoff `platform/uploaded-prior-to` (2026-11-12T00:00:00Z); `scripts/lock_check.py`; tabrion d5821fa
+  as its own component; runtime e05f51d and api d683b9e with service connections (NAL-A1); orkexa 3165be2, axentra
+  1dbd98f, examples b20395a, integrations 62138e2, sdk 02a22fd).
+- The image installs only from the lock (`pip install -r platform/internal.txt`, and `image/install.py --platform`
+  with `internal-server.txt` for the server extras), binds the third-party packages to the studio's upload cutoff
+  (`image/cutoff.sh`, kept in `/opt/nodestro/meta/uploaded-prior-to`) and runs the studio's `scripts/lock_check.py`
+  on both environments (`image/finalize.sh`). The fallbacks for studio commits without these files are gone: such a
+  commit now fails the build with a message naming the missing file. `tests/upgrade-from.json` is unchanged (the
+  upgrade job builds the old release with its own files).
+
 ### Studio pin: max_tokens and tool-round regression, RT-067 (2026-11-11)
 
 - Pins nodestro-studio 6755c7a (studio #167: orkexa 840add4, orkexa #71, which replays only the latest reasoning to
