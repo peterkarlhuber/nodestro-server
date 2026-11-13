@@ -69,8 +69,9 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     fi; \
     python -m venv /opt/nodestro/venv; \
     cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
+    lock=""; if [ -f /src/platform/internal.txt ]; then lock="/src/platform/internal.txt"; fi; \
     /opt/nodestro/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
-      ${cutoff:+--uploaded-prior-to "$cutoff"} /src; \
+      ${cutoff:+--uploaded-prior-to "$cutoff"} ${lock:+-r "$lock"} /src; \
     mkdir -p /opt/nodestro/meta; \
     if [ -n "$cutoff" ]; then echo "$cutoff" > /opt/nodestro/meta/uploaded-prior-to; fi; \
     cp /src/.studio-commit /opt/nodestro/meta/studio-commit; \
@@ -87,7 +88,8 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
       > /opt/nodestro/licenses/README.txt
 COPY image/finalize.sh /finalize.sh
 
-# The server's environment: the server extras at exactly the pinned commits.
+# The server's environment: the server extras at exactly the pinned commits (the studio's lock, platform/internal*.txt,
+# when the pinned studio has one; older studio commits pin the components in its pyproject.toml).
 # Both environments must contain the Amazon Bedrock provider: boto3/botocore come with orkexa[all], and the
 # import check loads botocore's service models (bedrock-runtime, bedrock, sts) to prove its data files are there.
 FROM build AS server-env
@@ -99,7 +101,7 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
         GIT_CONFIG_VALUE_0="https://github.com/peterkarlhuber/"; \
     fi; \
     cutoff="$(sh /cutoff.sh /opt/nodestro/venv/bin/python)"; \
-    /opt/nodestro/venv/bin/python /install.py ${cutoff:+--uploaded-prior-to "$cutoff"}
+    /opt/nodestro/venv/bin/python /install.py --platform /src/platform ${cutoff:+--uploaded-prior-to "$cutoff"}
 RUN --mount=type=bind,from=overrides,target=/overrides \
     sh /finalize.sh "import nodestro_api.server, nodestro_studio.app, psycopg, cryptography, jwt, boto3, botocore.session, orkexa.providers.bedrock; s = botocore.session.get_session(); [s.get_service_model(n) for n in ('bedrock-runtime', 'bedrock', 'sts')]" server
 
