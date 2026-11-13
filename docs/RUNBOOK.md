@@ -22,8 +22,8 @@ sandbox daemon is reachable. Otherwise they stop with one sentence that names th
 ## Install
 
 1. Build the image (or take it from your registry): `scripts/build-image.sh
-   registry.example.com/nodestro-server:<version>`. `studio.json` names the studio commit; it pins every
-   component by full commit SHA. The component repositories are public; a token in `NODESTRO_READ` is optional and
+   registry.example.com/nodestro-server:<version>`. `studio.json` names the studio commit; its lock
+   (`platform/internal-server.txt`) pins every internal package by full commit SHA. The component repositories are public; a token in `NODESTRO_READ` is optional and
    reaches the build only as a BuildKit secret.
 2. Create the database and two roles (see [Database roles](#database-roles)): `nodestro_owner` owns the tables and
    runs `migrate`, backups and restores; `nodestro_app` is the API's and the workers' role. As a superuser, connected

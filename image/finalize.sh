@@ -13,17 +13,17 @@ if ls /overrides/*.whl >/dev/null 2>&1; then
 fi
 # Every component at exactly the repository, commit and version the studio pins (scripts/lock_check.py of the same
 # studio checkout, offline). A red check fails the build, except in a development build, whose overrides differ from
-# the pins on purpose. A studio commit from before the script (nodestro-studio scripts/lock_check.py) has nothing
-# to run.
-if [ -f /src/scripts/lock_check.py ]; then
-  if [ -n "$overridden" ]; then
-    /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json \
-      || echo "development build: the overridden components differ from platform/versions.json (expected)"
-  else
-    /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json
-  fi
+# the pins on purpose. A studio without scripts/lock_check.py fails the build.
+if [ ! -f /src/scripts/lock_check.py ]; then
+  echo "finalize.sh: FAIL, the studio $(cat /src/.studio-commit) has no scripts/lock_check.py;" \
+    "pin a studio commit with the lock check in studio.json" >&2
+  exit 1
+fi
+if [ -n "$overridden" ]; then
+  /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json \
+    || echo "development build: the overridden components differ from platform/versions.json (expected)"
 else
-  echo "lock_check: not run, the studio $(cat /src/.studio-commit) has no scripts/lock_check.py"
+  /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json
 fi
 /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt
 /opt/nodestro/venv/bin/pip uninstall --yes --disable-pip-version-check pip

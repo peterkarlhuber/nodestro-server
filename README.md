@@ -3,8 +3,10 @@
 The Nodestro server: one image with the studio (web interface and API), its workers and the operator commands,
 plus a development stack and the end-to-end acceptance tests.
 
-- `image/`: the image. `studio.json` names the nodestro-studio commit it is built from; that commit pins every
-  component by full commit SHA. `scripts/build-image.sh` builds it.
+- `image/`: the image. `studio.json` names the nodestro-studio commit it is built from; that commit's lock
+  (`platform/internal.txt`, `platform/internal-server.txt`) pins every internal package by full commit SHA, and its
+  `platform/uploaded-prior-to` bounds the third-party packages. A studio commit without the lock, the upload cutoff
+  or `scripts/lock_check.py` fails the build. `scripts/build-image.sh` builds it.
 - `compose/`: the development and test stack (Linux): PostgreSQL 17 with pgvector, Dex as the identity provider, an isolated
   Docker daemon for tool code (Docker-in-Docker with TLS), an OpenAI-compatible model stub, and the server's
   `migrate`, `api` and `worker`.

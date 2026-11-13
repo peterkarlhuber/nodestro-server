@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the server image from the studio commit in studio.json (every component pinned by full commit SHA).
+# Build the server image from the studio commit in studio.json (every internal package pinned by the studio's lock).
 #
 #   scripts/build-image.sh [TAG]
 #
