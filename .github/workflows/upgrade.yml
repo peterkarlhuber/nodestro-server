@@ -12,6 +12,7 @@ on:
       - tests/upgrade-from.json
       - tests/e2e/test_upgrade.py
       - tests/e2e/conftest.py
+      - tests/e2e/upgrade-from-postgres.yaml
       - compose/**
       - image/**
       - scripts/build-image.sh

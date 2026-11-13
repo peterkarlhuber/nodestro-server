@@ -326,7 +326,12 @@ the table `nodestro_chunk_vectors` (migration `0010`, tenant-scoped like every o
 
 Switching an existing compose installation from `postgres:17` to the pgvector image keeps the data volume: both are
 PostgreSQL 17 with the same data format. Rolling back to `postgres:17` also starts; the installed extension is then
-unused. `ALTER EXTENSION vector UPDATE;` (superuser) after a new pgvector image.
+unused. `ALTER EXTENSION vector UPDATE;` (superuser) after a new pgvector image. Never switch the volume to an older
+minor version or an older C library: `postgres:17` is a floating tag, so compare `SELECT version();` before the
+switch with the pgvector image's version and pick a pgvector image at least as new, with the same Debian release
+(`-bookworm` or `-trixie`). A newer `postgres:17` than the pinned pgvector image made the upgrade test's restore fail
+on 2026-11-13 (`unrecognized parameter "pg_attver"`, 17.12 on trixie before, 17.11 on bookworm after), and a
+different C library shows as `collation version mismatch`.
 
 Backups contain the extension's `CREATE EXTENSION` entry, which the owner role may neither drop nor create. Restores
 leave extensions out (see [Backup and restore](#backup-and-restore)); a superuser installs them.

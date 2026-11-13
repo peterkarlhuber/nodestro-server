@@ -1,0 +1,11 @@
+# Only for tests/e2e/test_upgrade.py: the previous release's compose file runs the same PostgreSQL image as the
+# current one (compose/compose.yaml, pinned by digest), so that the upgrade, the rollback and the restores never
+# change the server's minor version or C library on the same data volume. The previous release (5bc7b82) names the
+# floating tag postgres:17; when that tag moved to 17.12 (trixie, glibc 2.41) on 2026-11-12, a volume created by it
+# was then served by the pinned 17.11 (bookworm, glibc 2.36), a minor downgrade: the nightly of 2026-11-13 failed
+# with 'unrecognized parameter "pg_attver"' when it restored the pre-migration dump.
+#
+# NODESTRO_POSTGRES_IMAGE is set by the test (the current compose file's image unless it is already set).
+services:
+  postgres:
+    image: ${NODESTRO_POSTGRES_IMAGE:?NODESTRO_POSTGRES_IMAGE names the database image of both releases}
