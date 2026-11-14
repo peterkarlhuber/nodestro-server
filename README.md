@@ -92,4 +92,4 @@ Known gaps, follow-ups and untested platforms are listed in [docs/TODO.md](docs/
 
 ## License
 
-See [LICENSE](LICENSE).
+Proprietary: Copyright (c) 2026 Levuvo. All rights reserved. See [LICENSE](LICENSE).

@@ -85,7 +85,7 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     cp /src/LICENSE /opt/nodestro/licenses/LICENSE-nodestro.txt; \
     cp /src/THIRD-PARTY-npm.txt /opt/nodestro/licenses/; \
     printf '%s\n' \
-      "Nodestro is MIT licensed (LICENSE-nodestro.txt). It contains third-party software under its own licenses:" \
+      "Nodestro is proprietary software (LICENSE-nodestro.txt). It contains third-party software under its own licenses:" \
       "- THIRD-PARTY-npm.txt: the npm packages built into the studio interface;" \
       "- each Python package's license is in its /opt/nodestro/venv/lib/python*/site-packages/*.dist-info directory;" \
       "- the Debian packages of the base image: /usr/share/doc/*/copyright;" \
