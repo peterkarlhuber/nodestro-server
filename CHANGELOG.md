@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### pip floor 26.1 (2026-11-14)
+
+- Nodestro's pip floor is 26.1 (owner decision 2026-11-14, nodestro-studio docs/PLATFORM.md "pip floor"). The image
+  build refuses an older pip through the studio's `scripts/pip_cutoff.py` (`image/cutoff.sh`) once `studio.json`
+  pins a studio with the new floor; the base image's pip (python:3.13.18-slim, pip 26.2.2) meets it.
+
 ### Image lock check covers tabrion, TABRION DC-SV-1 (2026-11-13)
 
 - `image/finalize.sh` keeps the output of the studio's `lock_check.py` in the image (`/opt/nodestro/lock-check.txt`);
