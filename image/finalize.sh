@@ -19,11 +19,17 @@ if [ ! -f /src/scripts/lock_check.py ]; then
     "pin a studio commit with the lock check in studio.json" >&2
   exit 1
 fi
-if [ -n "$overridden" ]; then
-  /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json \
-    || echo "development build: the overridden components differ from platform/versions.json (expected)"
+# The check's output stays in the image (/opt/nodestro/lock-check.txt): CI asserts that it covers tabrion (TABRION
+# DC-SV-1), so a component that silently left versions.json, and thereby the check, is noticed.
+if /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" \
+  --versions /src/platform/versions.json > /opt/nodestro/lock-check.txt 2>&1; then
+  cat /opt/nodestro/lock-check.txt
+elif [ -n "$overridden" ]; then
+  cat /opt/nodestro/lock-check.txt
+  echo "development build: the overridden components differ from platform/versions.json (expected)"
 else
-  /opt/nodestro/venv/bin/python -I /src/scripts/lock_check.py --profile "$profile" --versions /src/platform/versions.json
+  cat /opt/nodestro/lock-check.txt
+  exit 1
 fi
 /opt/nodestro/venv/bin/pip freeze --disable-pip-version-check > /opt/nodestro/pinned.txt
 /opt/nodestro/venv/bin/pip uninstall --yes --disable-pip-version-check pip
