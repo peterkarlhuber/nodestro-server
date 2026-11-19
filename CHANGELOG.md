@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Studio pin with N-03 and N-07; docker CLI 29.10.0 (2026-11-19)
+
+- `studio.json` pins nodestro-studio `ff0df34` (security fixes N-03 and N-07; `cryptography` declared in the runtime).
+- The image's docker CLI moves from 29.9.2 to 29.10.0 (checksums verified against download.docker.com). 29.9.2 is
+  built with Go 1.26.10, whose standard library has CVE-2026-97054 (HIGH, fixed in 1.26.11 and 1.27.4); the image
+  scan failed on it since the nightly run of 2026-11-19. 29.10.0 is built with Go 1.27.4.
+
 ### pip floor 26.1 (2026-11-14)
 
 - Nodestro's pip floor is 26.1 (owner decision 2026-11-14, nodestro-studio docs/PLATFORM.md "pip floor"). The image

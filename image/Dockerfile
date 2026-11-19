@@ -120,9 +120,9 @@ FROM python-base AS base
 ARG TARGETARCH
 # The docker CLI talks to the sandbox's Docker daemon (DOCKER_HOST); the daemon itself is not in this image. Its
 # version, download and checked SHA-256 go into /usr/local/share/nodestro/docker-cli.release for the release manifest.
-ARG DOCKER_CLI_VERSION=29.9.2
-ARG DOCKER_CLI_SHA256_AMD64=9ac225999fd5e863f7694c728ef23d480616b1e5639328fa309befd4243d69eb
-ARG DOCKER_CLI_SHA256_ARM64=873b3e0207857c3b2f28392fb922f3ea6efe37620c16d4d4aaf2fef409c90b73
+ARG DOCKER_CLI_VERSION=29.10.0
+ARG DOCKER_CLI_SHA256_AMD64=7c1ebadc65c716cdc6d35fc78759ed0e4317debf43c21dd12f066f2006999def
+ARG DOCKER_CLI_SHA256_ARM64=6e5159e8b5615e0c0c2954a2a1a2a12bc65f5d9b603595dba24a10cb367408cd
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
     apt-get update; \
