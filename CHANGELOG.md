@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Studio pin: no plain key next to its sealed form (2026-11-20)
+
+- `studio.json` pins nodestro-studio `3365344` (studio #211: nodestro-runtime #195 also seals the plain provider keys
+  in the database copies from before a migration and rewrites the database once without free pages; LD-020).
+
 ### Studio pin: plain keys leave the WAL at once (2026-11-20)
 
 - `studio.json` pins nodestro-studio `16baf34` (studio #210: nodestro-runtime #194, sealing plain provider keys ends
