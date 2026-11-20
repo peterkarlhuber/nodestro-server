@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Studio pin: plain keys leave the WAL at once (2026-11-20)
+
+- `studio.json` pins nodestro-studio `16baf34` (studio #210: nodestro-runtime #194, sealing plain provider keys ends
+  with a WAL checkpoint; LD-020 follow-up).
+
 ### LD-020: the key file label, studio pin (2026-11-20)
 
 - The local image carries the label `dev.nodestro.vault-key-file="1"`: it reads Nodestro Local Docker's key file on
