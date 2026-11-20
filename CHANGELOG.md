@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### LD-020: the key file label, studio pin (2026-11-20)
+
+- The local image carries the label `dev.nodestro.vault-key-file="1"`: it reads Nodestro Local Docker's key file on
+  the host (`nodestro-local boot`), and the launchers add nodestro-local-docker's `compose.vault-key.yaml` only for an
+  image with this label, so an older image after a rollback runs without it.
+- `studio.json` pins nodestro-studio `da74bcf` (studio #209: runtime #193 and api #153, LD-020).
+
 ### Studio pin with N-03 and N-07; docker CLI 29.10.0 (2026-11-19)
 
 - `studio.json` pins nodestro-studio `ff0df34` (security fixes N-03 and N-07; `cryptography` declared in the runtime).

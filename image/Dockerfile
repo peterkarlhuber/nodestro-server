@@ -176,6 +176,10 @@ ENV PATH=/opt/nodestro/venv/bin:$PATH \
 RUN test -f "${NODESTRO_STATIC_DIR}/index.html" && test -d "${NODESTRO_DOCS_DIR}/en" \
     && mkdir -p /var/lib/nodestro/data /var/lib/nodestro/secrets /run/nodestro-sandbox \
     && chown -R 10001:10001 /var/lib/nodestro && chmod 0700 /var/lib/nodestro/secrets
+# LD-020: this image reads Nodestro Local Docker's key file on the host (`nodestro-local boot`; compose.vault-key.yaml
+# of nodestro-local-docker, which the launchers add only for an image with this label, so an older image after a
+# rollback runs without it).
+LABEL dev.nodestro.vault-key-file="1"
 USER 10001:10001
 WORKDIR /var/lib/nodestro
 VOLUME ["/var/lib/nodestro"]
