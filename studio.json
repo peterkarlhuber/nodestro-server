@@ -1,4 +1,4 @@
 {
   "comment": "The studio commit the server image is built from (a merge commit on nodestro-studio master; its lock, platform/internal*.txt, pins every internal package).",
-  "nodestro-studio": "da74bcf894e4a5de66ce1683845684adfc10bade"
+  "nodestro-studio": "16baf340b4e2fca0af8e24c4928b8a417986a86e"
 }
