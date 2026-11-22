@@ -8,7 +8,7 @@
 # loads docker-default (the privileged container may) and confines its containers. On a host without AppArmor
 # nothing changes.
 # The base is pinned by its multi-arch index digest (the container is privileged), the package by its version.
-FROM docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
+FROM docker:29.10.0-dind@sha256:4bbc7223f81db790097c6dea42fb93e05b8fead4f0431fbe6ccaba6e8473201c
 RUN apk add --no-cache apparmor=4.1.7-r1 \
     && if [ ! -e /sbin/apparmor_parser ]; then ln -s "$(command -v apparmor_parser)" /sbin/apparmor_parser; fi \
     && /sbin/apparmor_parser --version
