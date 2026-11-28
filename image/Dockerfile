@@ -50,10 +50,17 @@ RUN --mount=type=secret,id=nodestro_read --mount=type=secret,id=build_ca \
     git rev-parse HEAD > /src/.studio-commit; \
     rm -rf .git
 COPY scripts/npm_licenses.mjs /npm_licenses.mjs
+# The studio's vendored nodestro-ui tarballs are checked against their SHA-256 pins before npm ci and the installed
+# packages after it (frontend/scripts/check-vendor.mjs), as the studio's own workflows do; a studio with vendor/ but
+# without the check fails here.
 RUN --mount=type=secret,id=build_ca \
     set -eu; \
     if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
-    cd frontend && npm ci --no-audit --no-fund && npm run build; \
+    cd frontend; \
+    if [ -d vendor ]; then node scripts/check-vendor.mjs; fi; \
+    npm ci --no-audit --no-fund; \
+    if [ -d vendor ]; then node scripts/check-vendor.mjs --installed; fi; \
+    npm run build; \
     node /npm_licenses.mjs . > /src/THIRD-PARTY-npm.txt; \
     rm -rf node_modules; \
     test -f /src/src/nodestro_studio/static/index.html
