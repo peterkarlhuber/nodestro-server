@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### The studio's vendored UI packages are checked in the image build (ST-068, 2026-11-28)
+
+- `image/Dockerfile` runs the studio's `frontend/scripts/check-vendor.mjs` before `npm ci` (each vendored nodestro-ui
+  tarball against its SHA-256 pin in `platform/internal-ui.txt`) and with `--installed` after it, as the studio's own
+  workflows do. A studio without vendored tarballs builds as before.
+
 ### Studio pin: no plain key next to its sealed form (2026-11-20)
 
 - `studio.json` pins nodestro-studio `3365344` (studio #211: nodestro-runtime #195 also seals the plain provider keys
